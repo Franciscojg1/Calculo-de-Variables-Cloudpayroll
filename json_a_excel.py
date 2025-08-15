@@ -476,7 +476,7 @@ def guardar_resultados_csv(resultados: List[Tuple[int, int, Any]], nombre_archiv
     except Exception as e:
         logging.error(f"❌ Error al guardar archivo Excel: {e}", exc_info=True)      
 
-def calcular_variables(legajo: Dict[str, Any]) -> List[Tuple[int, Any]]: # <-- CAMBIADO AQUÍ: Ya no devuelve id_legajo en cada tupla
+def calcular_variables(legajo: Dict[str, Any]) -> List[Tuple[int, Any]]:
     """
     Calcula todas las variables para un legajo según las reglas establecidas
 
@@ -488,66 +488,75 @@ def calcular_variables(legajo: Dict[str, Any]) -> List[Tuple[int, Any]]: # <-- C
     """
     try:
         variables = []
-        id_legajo = legajo.get('id_legajo', 'ID_DESCONOCIDO_EN_CALCULO') # Usa .get para seguridad
+        id_legajo = legajo.get('id_legajo', 'ID_DESCONOCIDO_EN_CALCULO')
 
         logger.debug(f"\nProcesando legajo ID: {id_legajo}")
 
         # 1. Validación inicial (Variable 9000)
         if not validar_horario(legajo):
             logger.warning(f"Legajo {id_legajo}: Horario ambiguo/inválido. Generando 9000")
-            variables.append((9000, "No se pudo interpretar correctamente el horario")) # <-- CAMBIADO: Solo código y valor
-            return variables # Si hay error 9000, sale aquí
+            variables.append((9000, "No se pudo interpretar correctamente el horario"))
+            return variables
 
         # 2. Variables base (fundacionales)
         v239 = obtener_horas_semanales(legajo)
-        variables.append((239, round(v239, 2))) # <-- CAMBIADO
+        variables.append((239, round(v239, 2)))
         logger.debug(f"Legajo {id_legajo}, Variable 239 calculada: {v239}")
 
         v1242 = calcular_dias_mensuales(legajo)
-        variables.append((1242, v1242)) # <-- CAMBIADO
+        variables.append((1242, v1242))
         logger.debug(f"Legajo {id_legajo}, Variable 1242 calculada: {v1242}")
         
-        # *** ¡CORRECCIÓN CRÍTICA DE INDENTACIÓN AQUÍ! ***
-        # Esta línea debe ejecutarse SIEMPRE, no solo si se cumple la condición del sueldo básico.
-        # Ahora 'es_guardia_actual' se definirá para cada legajo.
         es_guardia_actual = es_guardia(legajo) 
-        logger.debug(f"Legajo {id_legajo}, es_guardia_actual: {es_guardia_actual}") # Log para verificar
+        logger.debug(f"Legajo {id_legajo}, es_guardia_actual: {es_guardia_actual}")
 
         # Variable 1 - Sueldo básico
         if cumple_condicion_sueldo_basico(legajo):
-            # Asegúrate de manejar posibles errores si 'sueldo_base' no es numérico o no existe
             sueldo = round(float(legajo['remuneracion']['sueldo_base']), 2) if 'remuneracion' in legajo and 'sueldo_base' in legajo['remuneracion'] else 0.0
-            variables.append((1, sueldo)) # <-- CAMBIADO
+            variables.append((1, sueldo))
             logger.debug(f"Legajo {id_legajo}, Variable 1 calculada: {sueldo}")
 
         # Variable 2000 - Personal de Guardia
-        # Si el legajo es de guardia, aplicar la Variable 2000
-        if es_guardia_actual: # Esta línea ahora siempre encontrará 'es_guardia_actual' definida
+        if es_guardia_actual:
             variables.append((2000, 1))
             logger.debug(f"Legajo {id_legajo}, Variable 2000 aplicada (Personal de Guardia)")
         
-      # 3. Variables derivadas directamente de 239 y 1242
+        # 3. Variables derivadas directamente de 239 y 1242
         v4 = calcular_horas_mensuales(legajo, v239)
-        variables.append((4, round(v4, 2))) # <-- CAMBIADO
+        variables.append((4, round(v4, 2)))
         logger.debug(f"Legajo {id_legajo}, Variable 4 calculada: {v4}")
 
+        # Se obtiene el valor de v1157 antes de la condición
         v1157 = obtener_horas_nocturnas(legajo, es_guardia_actual)
-        if v1157 is not None and v1157 > 0: # Añadido 'is not None' para robustez
-            variables.append((1157, round(v1157, 2))) # <-- CAMBIADO
-            logger.debug(f"Legajo {id_legajo}, Variable 1157 calculada: {v1157}")
+        
+        # Lógica para V1157 y V1498 (Adicional nocturno)
+        if v239 == v1157:
+            logger.debug(f"Legajo {id_legajo}: No se calcula V1157, las horas semanales son totalmente nocturnas ({v239}h).")
+            # Se calcula solo el adicional nocturno si corresponde
+            if aplicar_adicional_nocturno(legajo, v1157, es_guardia_actual):
+                variables.append((1498, 1))
+                logger.debug(f"Legajo {id_legajo}, Variable 1498 aplicada (Adicional nocturno)")
+        else:
+            # Lógica original: si hay horas nocturnas, se calculan ambas variables
+            if v1157 is not None and v1157 > 0:
+                variables.append((1157, round(v1157, 2)))
+                logger.debug(f"Legajo {id_legajo}, Variable 1157 calculada: {v1157}")
+                if aplicar_adicional_nocturno(legajo, v1157, es_guardia_actual):
+                    variables.append((1498, 1))
+                    logger.debug(f"Legajo {id_legajo}, Variable 1498 aplicada (Adicional nocturno)")
 
         v992 = calcular_extension_horaria(legajo, v239)
         if v992 is not None:
-            variables.append((992, round(v992, 2))) # <-- CAMBIADO
+            variables.append((992, round(v992, 2)))
             logger.debug(f"Legajo {id_legajo}, Variable 992 calculada: {v992}")
 
         v1131 = calcular_dias_especiales(legajo, v1242)
         if v1131 is not None:
-            variables.append((1131, v1131)) # <-- CAMBIADO
+            variables.append((1131, v1131))
             logger.debug(f"Legajo {id_legajo}, Variable 1131 calculada: {v1131}")
 
         if aplicar_lavado_uniforme(legajo):
-            variables.append((1137, 1)) # <-- CAMBIADO
+            variables.append((1137, 1))
             logger.debug(f"Legajo {id_legajo}, Variable 1137 aplicada (Lavado de uniforme)")
 
         # 4. Variables proporcionales/condicionales complejas
@@ -558,26 +567,22 @@ def calcular_variables(legajo: Dict[str, Any]) -> List[Tuple[int, Any]]: # <-- C
 
         v1416 = calcular_jornada_art19(legajo, v239)
         if v1416 is not None:
-            variables.append((1416, v1416)) # <-- CAMBIADO
+            variables.append((1416, v1416))
             logger.debug(f"Legajo {id_legajo}, Variable 1416 aplicada (Jornada art. 19)")
 
         v1599 = calcular_porcentaje_art19(legajo, v239)
         if v1599 is not None:
-            variables.append((1599, round(v1599, 4))) # <-- CAMBIADO
+            variables.append((1599, round(v1599, 4)))
             logger.debug(f"Legajo {id_legajo}, Variable 1599 calculada: {v1599}")
 
-        if aplicar_adicional_nocturno(legajo, v1157, es_guardia_actual):
-            variables.append((1498, 1))
-            logger.debug(f"Legajo {id_legajo}, Variable 1498 aplicada (Adicional nocturno)")
-
         if aplicar_proporcion_lavado(legajo):
-            variables.append((1673, 1)) # <-- CAMBIADO
+            variables.append((1673, 1))
             logger.debug(f"Legajo {id_legajo}, Variable 1673 aplicada (Proporción lavado)")
 
         # 5. Variables administrativas
         fecha_fin = obtener_fecha_fin_contrato(legajo)
         if fecha_fin:
-            variables.append((2006, fecha_fin)) # <-- CAMBIADO
+            variables.append((2006, fecha_fin))
             logger.debug(f"Legajo {id_legajo}, Variable 2006 calculada: {fecha_fin}")
 
         if aplicar_no_liquida_plus(legajo, es_guardia_actual):
@@ -585,19 +590,18 @@ def calcular_variables(legajo: Dict[str, Any]) -> List[Tuple[int, Any]]: # <-- C
             logger.debug(f"Legajo {id_legajo}, Variable 2281 aplicada (No liquida plus)")
 
         if es_cajero(legajo):
-            variables.append((426, 1)) # <-- CAMBIADO
+            variables.append((426, 1))
             logger.debug(f"Legajo {id_legajo}, Variable 426 aplicada (Caja/Seguro)")
 
         # Variables informativas
         procesar_variables_informativas(legajo, variables)
 
-
         # Variables médicas
         if es_medico_productividad(legajo):
             variables.extend([
-                (1740, 1), # <-- CAMBIADO
-                (1251, 1), # <-- CAMBIADO
-                (1252, 1)  # <-- CAMBIADO
+                (1740, 1),
+                (1251, 1),
+                (1252, 1)
             ])
             logger.debug(f"Legajo {id_legajo}, Variables médicas aplicadas (1740, 1251, 1252)")
 
@@ -611,18 +615,18 @@ def calcular_variables(legajo: Dict[str, Any]) -> List[Tuple[int, Any]]: # <-- C
         print("------------------------------------------------------------------------------------\n")
         # ---------------------------------------------
 
-        return variables # Ahora devuelve List[Tuple[código, valor]]
+        return variables
 
     except Exception as e:
         logger.error(f"Error calculando variables para legajo {legajo.get('id_legajo', 'DESCONOCIDO')}: {str(e)}", exc_info=True)
         # --- ¡AQUÍ TAMBIÉN AGREGAMOS EL PRINT EN CASO DE ERROR! ---
         print(f"\n--- DEBUG: ERROR! Lista de variables hasta el momento para Legajo {id_legajo} ---")
-        print(variables) # Muestra las variables que se llegaron a calcular antes del error
+        print(variables)
         print(f"Error: {str(e)}")
         print("------------------------------------------------------------------------------------\n")
         # --------------------------------------------------------
-        return [] # Devuelve una lista vacía en caso de error en el cálculo
-# ==============================
+        return []
+    
 # FUNCIONES DE VALIDACIÓN
 # ==============================
 
@@ -881,16 +885,15 @@ def obtener_horas_nocturnas(legajo: Dict[str, Any], es_guardia: bool) -> float:
         return 0.0
     
     try:
-        # 2. Validar estructura del legajo
-        if not legajo.get('horario', {}).get('resumen'):
-            logger.warning(f"Legajo {legajo.get('id_legajo', 'N/A')}: Sin estructura de horario/resumen")
-            return 0.0
+        # 2. Obtener y validar horas de forma robusta
+        horas_raw = legajo.get('horario', {}).get('resumen', {}).get('total_horas_nocturnas', 0)
         
-        # 3. Obtener y validar horas
-        horas_raw = legajo['horario']['resumen'].get('total_horas_nocturnas', 0)
+        # Log de depuración para verificar el valor extraído
+        logger.debug(f"Legajo {legajo.get('id_legajo', 'N/A')}: Horas nocturnas 'raw' extraídas: {horas_raw}")
+        
         horas = float(horas_raw)
         
-        # 4. Aplicar límites razonables (0 <= horas <= 168)
+        # 3. Aplicar límites razonables (0 <= horas <= 168)
         horas_validas = max(0.0, min(horas, 168.0))
         
         if abs(horas_validas - horas) > 0.01:  # Tolerancia para floats
@@ -906,7 +909,7 @@ def obtener_horas_nocturnas(legajo: Dict[str, Any], es_guardia: bool) -> float:
         logger.error(f"Legajo {legajo.get('id_legajo', 'N/A')}: Error crítico - {str(e)}")
         logger.error(traceback.format_exc())
         return 0.0
-
+    
 def aplicar_lavado_uniforme(legajo: Dict[str, Any]) -> bool:
     """Determina si aplica lavado de uniforme (Variable 1137) de forma SUPER ROBUSTA."""
     try:
@@ -956,33 +959,42 @@ def aplicar_adicional_nocturno(legajo: Dict[str, Any], horas_nocturnas: float, e
     Returns:
         bool: True si cumple TODAS las condiciones
     """
+    id_legajo = legajo.get('id_legajo', 'N/A')
+    
+    # --- LOGS DE DEPURACIÓN AGREGADOS ---
+    logger.debug(f"Legajo {id_legajo}: Evaluando adicional nocturno. es_guardia={es_guardia}, horas_nocturnas={horas_nocturnas}")
+
     # 1. Excepciones rápidas (guardias o sin horas nocturnas)
     if es_guardia:
-        logger.debug(f"Legajo {legajo.get('id_legajo', 'N/A')}: Excluido (es guardia)")
+        logger.debug(f"Legajo {id_legajo}: Excluido (es guardia) → Falso")
         return False
     if horas_nocturnas <= 0:
-        logger.debug(f"Legajo {legajo.get('id_legajo', 'N/A')}: Excluido (0 horas nocturnas)")
+        logger.debug(f"Legajo {id_legajo}: Excluido (0 horas nocturnas) → Falso")
         return False
 
     try:
         # 2. Validar categoría
         categoria = legajo.get('contratacion', {}).get('categoria', '')
+        
+        # --- LOG DE DEPURACIÓN PARA LA CATEGORÍA ---
+        logger.debug(f"Legajo {id_legajo}: Categoría a evaluar: '{categoria}'")
+        
         if not categoria:
-            logger.warning(f"Legajo {legajo.get('id_legajo', 'N/A')}: Categoría vacía")
+            logger.warning(f"Legajo {id_legajo}: Categoría vacía → Falso")
             return False
             
         # 3. Verificar convenio (DC = Dentro de Convenio)
         es_dc = str(categoria).lower().startswith('dc_')
         
         logger.info(
-            f"Legajo {legajo.get('id_legajo', 'N/A')}: "
+            f"Legajo {id_legajo}: "
             f"Adicional nocturno {'APLICA' if es_dc else 'NO aplica'} "
             f"(Categoría: {categoria}, Horas: {horas_nocturnas})"
         )
         return es_dc
         
     except Exception as e:
-        logger.error(f"Legajo {legajo.get('id_legajo', 'N/A')}: Error crítico - {str(e)}")
+        logger.error(f"Legajo {id_legajo}: Error crítico - {str(e)}")
         logger.error(traceback.format_exc())
         return False
 
@@ -1102,7 +1114,11 @@ def procesar_variables_informativas(legajo: Dict[str, Any], variables: List[Tupl
         if "intangibilidad" in adicionables_para_intang:
             variables.append((8000, "Revisar Importe o % para Intangibilidad Salarial"))
             logger.debug(f"Legajo {id_legajo}: Variable 8000 aplicada (Intangibilidad)")
-
+        # --- Nueva Variable 9000 (Adicional Voluntario) ---
+        terminos_adic_voluntario = ["adic voluntario", "adicional voluntario", "voluntario empresa"]
+        if any(term in adicionables_normalizado for term in terminos_adic_voluntario):
+            variables.append((9000, "Revisar Adic Voluntario Empresa"))
+            logger.debug(f"Legajo {id_legajo}: Variable 9000 aplicada (Adic Voluntario)")    
         # --- Nueva Variable 11000 (PPR) ---
         # Condición 1: "PPR" en adicionables_normalizado
         ppr_en_adicionables = "ppr" in adicionables_normalizado
@@ -1239,7 +1255,8 @@ def calcular_horas_mensuales(legajo: Dict[str, Any], v239: float) -> float:
             (sector == "cuat" and puesto == PUESTOS_ESPECIALES['TELEFONISTA'] and v239 == 35) or
             (puesto == PUESTOS_ESPECIALES['RECEP_LAB'] and v239 == 35) or
             (puesto == PUESTOS_ESPECIALES['TEC_CARDIO'] and v239 >= 35) or
-            (puesto == PUESTOS_ESPECIALES['OP_LOGISTICA'] and v239 >= 35)
+            (puesto == PUESTOS_ESPECIALES['OP_LOGISTICA'] and v239 >= 35) or
+            (sector == "atencion al cliente laboratorio" and puesto == "recepcionista" and v239 >= 35)
         ):
             logger.info(f"Legajo {id_legajo}: Caso especial → 200 horas (Puesto + condición)")
             return 200.00
@@ -1324,8 +1341,16 @@ def calcular_jornada_reducida(legajo: Dict[str, Any], es_guardia: bool) -> Optio
         puesto = normalizar_texto(datos_personales.get('puesto', ''))
         sector = normalizar_texto(datos_personales.get('sector', {}).get('principal', ''))
         total_horas = legajo.get('horario', {}).get('resumen', {}).get('total_horas_semanales', 0.0)
+        categoria_raw = legajo.get('contratacion', {}).get('categoria', '')
+        categoria = normalizar_texto(categoria_raw)
 
-        # --- Validaciones ---
+        # --- NUEVO LOG DE DEPURACIÓN ---
+        logger.debug(f"[1167] Legajo {id_legajo}: Categoría original: '{categoria_raw}', Categoría normalizada: '{categoria}'")
+
+        # --- Validación de la nueva condición ---
+        if categoria in ('pfc', 'fc pfc'):
+            logger.debug(f"[1167] Legajo {id_legajo}: Excluido por categoría '{categoria}'")
+            return None
         if es_guardia:
             logger.debug(f"[1167] Legajo {id_legajo}: Excluido (es guardia)")
             return None
@@ -1344,9 +1369,12 @@ def calcular_jornada_reducida(legajo: Dict[str, Any], es_guardia: bool) -> Optio
         # --- Determinar piso horario ---
         dias_trabajo = set(legajo.get('horario', {}).get('resumen', {}).get('dias_trabajo', []))
         
+        # Lógica para la regla especial
         if total_horas == 18.0 and dias_trabajo.issuperset(DIAS_ESPECIALES):
             piso = 45.0
-            logger.debug(f"[1167] Legajo {id_legajo}: Regla especial 18h+L/M/Mi → piso=45")
+            resultado = round((total_horas / piso) * 100, 4)
+            logger.info(f"[1167] Legajo {id_legajo}: APLICA (regla 18h en L/M/V → {resultado}%)")
+            return resultado
         else:
             if sector in SECTORES_IMAGENES:
                 piso = PISOS_HORARIOS.get(normalizar_texto('IMAGENES'), 36.0)
