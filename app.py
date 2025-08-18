@@ -257,10 +257,13 @@ if uploaded_file:
                 if debug_mode:
                     st.exception(e)
 
+year = datetime.now().year  # <- año dinámico
+
 # ----------------- FOOTER -----------------
-st.markdown("""
+
+st.markdown(f"""
     <style>
-    .footer {
+    .footer {{
         position: fixed;
         left: 0;
         bottom: 0;
@@ -270,9 +273,10 @@ st.markdown("""
         text-align: center;
         padding: 10px;
         font-size: 0.8em;
-    }
+        z-index: 9999;
+    }}
     </style>
     <div class="footer">
-        Sistema de cálculo de variables laborales © {datetime.now().year}
+        Variables de liquidación © {year}
     </div>
 """, unsafe_allow_html=True)
