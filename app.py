@@ -70,6 +70,14 @@ def setup_streamlit_logging(debug: bool):
     root_logger.addHandler(streamlit_handler)
     root_logger.setLevel(log_level)
 
+    # === Opción 1: Silenciar DEBUG/INFO de watchdog (hot-reload) ===
+    for noisy in [
+        'watchdog',
+        'watchdog.observers',
+        'watchdog.observers.inotify_buffer',
+    ]:
+        logging.getLogger(noisy).setLevel(logging.WARNING)
+
 # ----------------- FUNCIÓN PARA MOSTRAR ESTADÍSTICAS -----------------
 def display_stats(stats: Dict[str, Any]):
     """Muestra estadísticas en un layout organizado usando st.columns."""
