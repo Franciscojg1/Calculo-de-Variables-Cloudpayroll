@@ -2,8 +2,13 @@
 import pandas as pd
 import json
 import re
+import math
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
+from typing import Any, Optional
+
+logger = logging.getLogger('excel_a_json')
+
 
 # =============== DICCIONARIOS GLOBALES ===============
 
@@ -35,7 +40,20 @@ EQUIVALENCIAS = {
     "sabados por medio": "sábado por medio", "sábado por medio": "sábado por medio", "domingo por medio": "domingo por medio",
     "feriados": "feriado",
 }
+
+EQUIVALENCIAS_EXTRA = {
+    "lav": "lunes-viernes",      # LaV → lunes-viernes
+    "la v": "lunes-viernes",     # La V → lunes-viernes
+    "l a v": "lunes-viernes",    # L a V → lunes-viernes
+    "l-v": "lunes-viernes",      # L-V → lunes-viernes
+    "l/v": "lunes-viernes",      # L/V → lunes-viernes
+    "l v": "lunes-viernes",      # L V → lunes-viernes
+}
+
+# después de definir EQUIVALENCIAS original:
+EQUIVALENCIAS.update(EQUIVALENCIAS_EXTRA)
 EQUIVALENCIAS = dict(sorted(EQUIVALENCIAS.items(), key=lambda item: len(item[0]), reverse=True))
+
 
 MODALIDAD_MAP = {
     'EVENTUAL': 'eventual', 'PERÍODO DE PRUEBA': 'periodo_prueba', 'PERÍODO DE PRUEBA (JORNADA PARCIAL)': 'periodo_prueba_parcial',
@@ -96,17 +114,35 @@ SEDES_VALIDAS = {
 
 # =============== HELPERS ===============
 
-def clean_and_standardize(text):
+def clean_and_standardize(text: str) -> str:
+    if not isinstance(text, str):
+        text = "" if text is None else str(text)
     text = text.lower().strip()
-    text = re.sub(r'\s*(?:hs|hrs)\b', '', text)
+    text = re.sub(r'\s*(?:hs|hrs)\b', '', text)  # ej: "8hs", "8 hrs"
     text = text.replace(',', ' y ')
     text = re.sub(r'\s+', ' ', text).strip()
     return text
 
-def apply_equivalences(text, equivalences):
-    for old, new in equivalences.items():
-        text = re.sub(r'\b' + re.escape(old) + r'\b', new, text)
+def limpiar_prefijos_horas(text: str) -> str:
+    # quita "45hs", "45 hs", "40h" al inicio
+    return re.sub(r'^\s*\d+\s*h?s?\b\s*', '', text, flags=re.IGNORECASE)
+
+def apply_equivalences(text: str, equivalences: dict) -> str:
+    # variantes súper flexibles de LaV (L A V, L.A.V., L-V, etc.)
+    text = re.sub(r'\b(?:l\s*[\.\-]?\s*a\s*[\.\-]?\s*v)\b',
+                  'lunes-viernes', text, flags=re.IGNORECASE)
+
+    # resto de equivalencias (palabra completa), priorizando claves largas
+    for old, new in sorted(equivalences.items(), key=lambda x: len(x[0]), reverse=True):
+        pattern = r'\b' + re.escape(old) + r'\b'
+        text = re.sub(pattern, new, text, flags=re.IGNORECASE)
     return text
+
+def normalizar_horario_input(s: str) -> str:
+    s = clean_and_standardize(s)
+    s = limpiar_prefijos_horas(s)
+    s = apply_equivalences(s, EQUIVALENCIAS)
+    return s
 
 def format_time_to_hhmm(time_str):
     time_str = time_str.replace('.', ':')
@@ -171,42 +207,67 @@ def clean_and_convert_to_float(text_value):
 
 def validar_fila_detallada(row):
     errores = []
+
+    # Legajo
     if pd.isna(legajo := row.get('Legajo')):
         errores.append("Legajo faltante")
     elif not isinstance(legajo, (int, float)) or legajo <= 0:
         errores.append("Legajo debe ser número positivo")
+
+    # Sector
     if pd.isna(sector := row.get('Sector')) or str(sector).strip() == '':
         errores.append("Sector faltante o vacío")
+
+    # Categoría
     if pd.isna(categoria := row.get('Categoría')) or str(categoria).strip() == '':
         errores.append("Categoría faltante o vacía")
     else:
         cat_str_upper = re.sub(r'\s+', ' ', str(categoria).strip().upper())
         if not any(re.fullmatch(pattern, cat_str_upper) for pattern in CATEGORIA_MAP):
             errores.append(f"Categoría '{categoria}' no reconocida")
+
+    # Fecha ingreso (obligatoria)
     if pd.isna(fecha_ingreso := row.get('Fecha ingreso')):
         errores.append("Fecha ingreso faltante")
     else:
-        try:
-            if isinstance(fecha_ingreso, (int, float)):
-                pd.Timestamp('1899-12-30') + pd.Timedelta(days=fecha_ingreso)
-            else:
-                pd.to_datetime(fecha_ingreso, dayfirst=True)
-        except:
+        if parsear_fecha(fecha_ingreso) is None:
             errores.append(f"Formato de fecha inválido: '{fecha_ingreso}'")
+
+    # Fecha fin (opcional, pero validar si viene)
+    fecha_fin = row.get('Fecha de fin')
+    if pd.notna(fecha_fin) and str(fecha_fin).strip() != '':
+        if parsear_fecha(fecha_fin) is None:
+            errores.append(f"Formato de fecha de fin inválido: '{fecha_fin}'")
+
+    # Horario
     if pd.isna(horario := row.get('Horario completo')) or str(horario).strip() == '':
         errores.append("Horario faltante o vacío")
     else:
-        horario_str = str(horario).lower()
-        if not any(dia in horario_str for dia in DAY_MAP):
+        horario_str = normalizar_horario_input(str(horario))
+
+        # Chequeo de días con límites de palabra (evita falsos positivos)
+        dia_ok = any(
+            re.search(rf'\b{re.escape(k)}\b', horario_str)
+            for k in DAY_MAP.keys() if isinstance(k, str)
+        )
+        if not dia_ok:
             errores.append("Horario no especifica días válidos")
+
+        # Rango horario (8, 8-17, 08:00-17, 8:30 a 17, etc.)
         if not re.search(r'\d{1,2}\s*[:.,]?\s*\d{0,2}\s*(?:a|-)\s*\d{1,2}\s*[:.,]?\s*\d{0,2}', horario_str):
             errores.append("Horario no contiene rango horario válido")
-        if any(palabra in horario_str for palabra in ['variable', 'flexible', 'rotativo']):
+
+        # Términos ambiguos
+        ambiguos = ['variable', 'variables', 'flexible', 'flexibles', 'rotativo', 'rotativa', 'rotativos', 'rotativas']
+        if any(pal in horario_str for pal in ambiguos):
             errores.append("Horario contiene términos ambiguos")
+
+    # Sede
     if pd.isna(sede := row.get('Sede')) or str(sede).strip() == '':
         sede_norm = {'codigo': 'SD', 'nombre_normalizado': 'Campo Sede Vacío', 'tipo': 'no_definida'}
     else:
         sede_norm = normalizar_sede(str(sede).strip())
+
     return {
         'errores': errores,
         'fila_valida': len(errores) == 0,
@@ -249,23 +310,85 @@ def normalizar_sede(nombre_sede: str) -> dict:
         return resultado
     return {'codigo': 'ND', 'nombre_normalizado': f'DESCONOCIDA ({nombre_sede.strip()})', 'tipo': 'desconocida'}
 
-def parsear_fecha(date_value):
-    if pd.isna(date_value) or date_value in [None, "", "nan", "NaT"]:
+def parsear_fecha(valor: Any) -> Optional[str]:
+    """
+    Devuelve 'dd/mm/YYYY' o None.
+    Soporta:
+      - datetime / pandas.Timestamp
+      - serial de Excel (número o string numérica)
+      - strings con '/', '-', '.' y año de 2 o 4 dígitos (19/09/25 -> 19/09/2025)
+    """
+    # 1) nulos / vacíos
+    if valor is None or (isinstance(valor, float) and (math.isnan(valor) or math.isinf(valor))):
         return None
-    if isinstance(date_value, (int, float)):
-        try:
-            dt = pd.to_datetime(date_value, unit='D', origin='1899-12-30')
-            return dt.strftime('%d/%m/%Y')
-        except Exception as e:
+    if isinstance(valor, str):
+        s = valor.strip()
+        if s == "" or s.lower() in {"nan", "none", "null"}:
             return None
-    fecha_str = str(date_value).strip()
-    formatos = ['%d/%m/%Y', '%Y-%m-%d', '%m/%d/%Y', '%d-%m-%Y', '%Y%m%d']
-    for fmt in formatos:
+
+    # 2) datetime-like directo
+    try:
+        if hasattr(valor, "to_pydatetime"):
+            valor = valor.to_pydatetime()
+        if isinstance(valor, datetime):
+            return valor.strftime("%d/%m/%Y")
+    except Exception:
+        pass
+
+    # 3) serial de Excel (número o string numérica)
+    #    base 1899-12-30 evita el bug del 29/02/1900
+    def es_numero(s):
         try:
-            fecha_dt = datetime.strptime(fecha_str, fmt)
-            return fecha_dt.strftime('%d/%m/%Y')
-        except ValueError:
-            continue
+            float(s)
+            return True
+        except:
+            return False
+
+    if isinstance(valor, (int, float)) or (isinstance(valor, str) and es_numero(valor)):
+        try:
+            dias = float(valor)
+            base = datetime(1899, 12, 30)
+            dt = base + timedelta(days=dias)
+            return dt.strftime("%d/%m/%Y")
+        except Exception:
+            pass
+
+    # 4) strings con formatos comunes y año de 2 dígitos
+    try:
+        s = str(valor).strip()
+
+        # normalizar separadores a '/'
+        s_norm = re.sub(r"[^0-9]", "/", s)
+        s_norm = re.sub(r"/+", "/", s_norm).strip("/")
+
+        candidatos = {s, s_norm, s_norm.replace("/", "-"), s_norm.replace("/", ".")}
+
+        formatos = [
+            "%d/%m/%Y", "%d/%m/%y",
+            "%d-%m-%Y", "%d-%m-%y",
+            "%Y/%m/%d", "%y/%m/%d",
+            "%Y-%m-%d", "%y-%m-%d",
+            "%d.%m.%Y", "%d.%m.%y",
+        ]
+
+        for cand in list(candidatos):
+            for fmt in formatos:
+                try:
+                    # adaptar separador del candidato a cada fmt
+                    if "." in fmt:
+                        cand_fmt = cand.replace("/", ".").replace("-", ".")
+                    elif "-" in fmt:
+                        cand_fmt = cand.replace("/", "-").replace(".", "-")
+                    else:
+                        cand_fmt = cand.replace("-", "/").replace(".", "/")
+
+                    dt = datetime.strptime(cand_fmt, fmt)
+                    return dt.strftime("%d/%m/%Y")
+                except ValueError:
+                    continue
+    except Exception:
+        pass
+
     return None
 
 def parse_schedule_string(schedule_str):
@@ -409,24 +532,11 @@ def calcular_resumen_horario(bloques, nombre_sede=None):
 
 # =============== FUNCIÓN PRINCIPAL ===============
 
-def procesar_excel_a_json(df, output_json_path="horarios.json", logger_callback=None):
+def procesar_excel_a_json(df, output_json_path="horarios.json"):
     """
-    Procesa un DataFrame de pandas con datos de legajos y genera un archivo JSON normalizado.
-    Versión mejorada con sistema de logging detallado.
-
-    Args:
-        df (pd.DataFrame): DataFrame con los datos de los legajos
-        output_json_path (str): Ruta donde se guardará el JSON resultante
-        logger_callback (function): Función para registrar mensajes (debe aceptar (message, level))
-
-    Returns:
-        str: Ruta del archivo JSON generado
+    Procesa un DataFrame de pandas y genera un archivo JSON normalizado.
+    Ahora utiliza el sistema de logging estándar de Python.
     """
-    def log(message, level="info"):
-        """Función helper para logging consistente"""
-        if logger_callback:
-            logger_callback(message, level)
-
     try:
         # Inicialización de estadísticas
         stats = {
@@ -439,117 +549,75 @@ def procesar_excel_a_json(df, output_json_path="horarios.json", logger_callback=
         
         all_normalized_data = []
         
-        log(f"🚀 Iniciando procesamiento de {len(df)} filas", "info")
-        log(f"Modo debug: {logger_callback is not None}", "debug")
+        # Usamos el logger directamente
+        logger.info(f"🚀 Iniciando procesamiento de {len(df)} filas")
 
         # Procesamiento de cada fila
         for index, row in df.iterrows():
-            # Validación inicial
-            log(f"Procesando fila {index + 1}/{len(df)} - Legajo: {row.get('Legajo', 'N/A')}", "debug")
+            legajo_str = f"Legajo: {row.get('Legajo', 'N/A')}"
+            logger.debug(f"Procesando fila {index + 1}/{len(df)} - {legajo_str}")
             
             validacion = validar_fila_detallada(row)
             if not validacion['fila_valida']:
                 stats['filas_omitidas'] += 1
                 stats['total_errores_validacion'] += len(validacion['errores'])
-                log(
-                    f"Fila {index + 2} omitida (Legajo {row.get('Legajo', 'N/A')}): {validacion['errores']}", 
-                    "warning"
-                )
+                logger.warning(f"Fila {index + 2} omitida ({legajo_str}): {validacion['errores']}")
                 continue
 
             legajo = row['Legajo']
             try:
-                # Procesamiento del horario
                 horario_original = str(row['Horario completo'])
-                log(f"Interpretando horario para legajo {legajo}: {horario_original[:50]}...", "debug")
+                logger.debug(f"Interpretando horario para legajo {legajo}: {horario_original[:50]}...")
                 
                 normalized_schedule = parse_schedule_string(horario_original)
                 
                 if not normalized_schedule:
                     stats['errores_parsing'] += 1
-                    log(
-                        f"❌ Error de Parseo para legajo {legajo}. Horario no interpretable: {horario_original[:100]}", 
-                        "error"
-                    )
+                    logger.error(f"❌ Error de Parseo para legajo {legajo}. Horario no interpretable: {horario_original[:100]}")
                     continue
 
-                # Construcción del objeto normalizado
+                # ... (el resto de tu lógica de construcción de 'empleado_mejorado' sigue igual)
                 empleado_mejorado = {
                     "id_legajo": int(legajo),
-                    "datos_personales": {
-                        "nombre": safe_str_get(row, 'Nombre completo'),
-                        "sede": validacion['sede_normalizada']['nombre_normalizado'],
-                        "sector": {
-                            "principal": safe_str_get(row, 'Sector'),
-                            "subsector": safe_str_get(row, 'Subsector')
-                        },
-                        "puesto": safe_str_get(row, 'Puesto')
-                    },
-                    "contratacion": {
-                        "tipo": normalize_modalidad(row.get('Modalidad contratación')),
-                        "categoria": normalize_categoria(row.get('Categoría')),
-                        "fechas": {
-                            "ingreso": parsear_fecha(row.get('Fecha ingreso')),
-                            "fin": parsear_fecha(row.get('Fecha de fin'))
-                        }
-                    },
-                    "horario": {
-                        "bloques": [dict(bloque, legajo=legajo) for bloque in normalized_schedule],
-                        "resumen": calcular_resumen_horario(normalized_schedule)
-                    },
-                    "remuneracion": {
-                        "sueldo_base": clean_and_convert_to_float(row.get('Sueldo bruto pactado')),
-                        "moneda": "ARS",
-                        "adicionables": safe_str_get(row, 'Adicionales')
-                    }
+                    "datos_personales": { "nombre": safe_str_get(row, 'Nombre completo'), "sede": validacion['sede_normalizada']['nombre_normalizado'], "sector": { "principal": safe_str_get(row, 'Sector'), "subsector": safe_str_get(row, 'Subsector') }, "puesto": safe_str_get(row, 'Puesto') },
+                    "contratacion": { "tipo": normalize_modalidad(row.get('Modalidad contratación')), "categoria": normalize_categoria(row.get('Categoría')), "fechas": { "ingreso": parsear_fecha(row.get('Fecha ingreso')), "fin": parsear_fecha(row.get('Fecha de fin')) } },
+                    "horario": { "bloques": [dict(bloque, legajo=legajo) for bloque in normalized_schedule], "resumen": calcular_resumen_horario(normalized_schedule) },
+                    "remuneracion": { "sueldo_base": clean_and_convert_to_float(row.get('Sueldo bruto pactado')), "moneda": "ARS", "adicionables": safe_str_get(row, 'Adicionales') }
                 }
                 
                 all_normalized_data.append(empleado_mejorado)
                 stats['procesados_exitosamente'] += 1
                 
-                log(f"✓ Legajo {legajo} procesado correctamente. Bloques horarios: {len(normalized_schedule)}", "debug")
+                logger.debug(f"✓ Legajo {legajo} procesado correctamente. Bloques horarios: {len(normalized_schedule)}")
 
             except Exception as e:
                 stats['filas_omitidas'] += 1
-                log(
-                    f"⚠ Error procesando legajo {legajo}: {str(e)}\nDatos fila: {dict(row.dropna())}", 
-                    "error"
-                )
+                logger.error(f"⚠ Error inesperado procesando legajo {legajo}: {str(e)}\nDatos fila: {dict(row.dropna())}")
 
-        # Generación del JSON final
+        # ... (la lógica de 'output_mejorado' y 'json.dump' sigue igual)
         output_mejorado = {
-            "metadata": {
-                "version_esquema": "1.2",
-                "fecha_generacion": datetime.now().isoformat(),
-                "estadisticas": {
-                    **stats,
-                    "total_registros_validos": len(all_normalized_data)
-                },
-                "sistema_origen": "horarios_parser_streamlit"
-            },
+            "metadata": { "version_esquema": "1.2", "fecha_generacion": datetime.now().isoformat(), "estadisticas": { **stats, "total_registros_validos": len(all_normalized_data) }, "sistema_origen": "horarios_parser_streamlit" },
             "legajos": all_normalized_data
         }
-
-        # Guardado del archivo
         with open(output_json_path, 'w', encoding='utf-8') as f:
             json.dump(output_mejorado, f, ensure_ascii=False, indent=2)
 
-        log(
-            f"""\n✅ Proceso completado:
-            \n- Total filas procesadas: {stats['total_filas']}
-            \n- Legajos válidos: {stats['procesados_exitosamente']}
-            \n- Errores de validación: {stats['total_errores_validacion']}
-            \n- Errores de parsing: {stats['errores_parsing']}
-            \n- Filas omitidas: {stats['filas_omitidas']}""",
-            "info"
-        )
-
-        log(f"Archivo JSON generado en: {output_json_path}", "debug")
+        # Resumen final con logger.info
+        resumen_msg = f"""
+✅ Proceso completado:
+- Total filas procesadas: {stats['total_filas']}
+- Legajos válidos: {stats['procesados_exitosamente']}
+- Errores de validación: {stats['total_errores_validacion']}
+- Errores de parsing: {stats['errores_parsing']}
+- Filas omitidas: {stats['filas_omitidas']}
+"""
+        logger.info(resumen_msg)
+        logger.debug(f"Archivo JSON generado en: {output_json_path}")
         return output_json_path
 
     except Exception as e:
         error_msg = f"Error crítico en procesar_excel_a_json: {str(e)}"
-        log(error_msg, "error")
+        logger.critical(error_msg) # Usamos critical para errores fatales
         raise RuntimeError(error_msg)
 
 
@@ -558,6 +626,28 @@ def safe_str_get(row, field_name, default=None):
     value = row.get(field_name)
     return str(value).strip() if pd.notna(value) else default
 
-# =============== USO RÁPIDO ===============
-# df = pd.read_excel("Variables Julio 2025.xlsx")
-# procesar_excel_a_json(df, output_json_path="horarios.json")
+# =============== BLOQUE DE EJECUCIÓN INDEPENDIENTE ===============
+if __name__ == '__main__':
+    # Esta sección SÓLO se ejecuta cuando corres este archivo directamente.
+    # NO se ejecutará cuando Streamlit (app.py) lo importe.
+    
+    # 1. Configurar un logging básico para ver la salida en la consola.
+    logging.basicConfig(
+        level=logging.DEBUG,  # Muestra todos los mensajes, desde DEBUG hasta CRITICAL
+        format='%(asctime)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.StreamHandler() # Envía los logs a la consola
+        ]
+    )
+
+    logger.info("--- Ejecutando script en modo de prueba independiente ---")
+    
+    # 2. Tu código de prueba (descomenta para usar)
+    try:
+        df_prueba = pd.read_excel("Variables Julio 2025.xlsx")
+        procesar_excel_a_json(df_prueba, output_json_path="horarios_de_prueba.json")
+        logger.info("--- Prueba finalizada exitosamente ---")
+    except FileNotFoundError:
+        logger.error("Error: El archivo 'Variables Julio 2025.xlsx' no fue encontrado. Asegúrate de que esté en la misma carpeta.")
+    except Exception as e:
+        logger.error(f"Ocurrió un error durante la prueba: {e}")

@@ -28,19 +28,13 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 from typing import Callable, Any, Dict, List, Optional, Tuple
 from collections import defaultdict
 
+logger = logging.getLogger('json_a_excel')
+
 def json_a_excel_streamlit(ruta_json: str, nombre_excel: str = "variables_calculadas.xlsx", logger_callback=None) -> Optional[str]:
     """
     Procesa un archivo JSON normalizado (legajos) y genera un Excel con variables calculadas.
     Retorna el path del Excel generado, o None si hubo error crítico.
     """
-    # 1. Configuración básica de logging
-    logger = logging.getLogger("JSON_A_EXCEL")
-    logger.setLevel(logging.DEBUG)
-    if not logger.hasHandlers():
-        ch = logging.StreamHandler()
-        ch.setLevel(logging.DEBUG)
-        logger.addHandler(ch)
-        
     try:
         # 2. Leer el archivo JSON
         if not os.path.exists(ruta_json):
@@ -73,21 +67,6 @@ COLOR_CYAN = "\033[96m"
 COLOR_WHITE = "\033[97m"
 COLOR_BOLD = "\033[1m"
 COLOR_UNDERLINE = "\033[4m"
-
-# ---
-# Configuración del sistema de logging
-# Se configura para guardar logs en un archivo y mostrarlos en la consola.
-for handler in logging.root.handlers[:]:
-    logging.root.removeHandler(handler)
-logging.basicConfig(
-    level=logging.DEBUG, # Nivel mínimo de mensajes a procesar (INFO, WARNING, ERROR, DEBUG, etc.)
-    format='%(asctime)s - %(levelname)s - %(message)s', # Formato del mensaje de log
-    handlers=[
-        logging.FileHandler('liquidacion_debug.log', encoding='utf-8'), # Guarda logs en un archivo
-        logging.StreamHandler() # Muestra logs en la consola
-    ]
-)
-logger = logging.getLogger(__name__) # Obtiene una instancia del logger para este módulo
 
 
 def normalizar_texto(texto: Any) -> str:
@@ -314,30 +293,13 @@ TERMINOS_CESION = {normalizar_texto(term) for term in TERMINOS_CESION_RAW}
 # FUNCIONES PRINCIPALES
 # ==============================
 
-def procesar_archivo_json(ruta_archivo: str, logger_callback: Callable[[str, str], None] = None) -> Tuple[Optional[List[Tuple[int, int, Any]]], Dict[str, Any]]:
+def procesar_archivo_json(ruta_archivo: str) -> Tuple[Optional[List[Tuple[int, int, Any]]], Dict[str, Any], Dict[Any, Any]]:
     """
-    Procesa el archivo JSON y genera las variables calculadas con sistema de logging mejorado.
-
-    Args:
-        ruta_archivo: Ruta al archivo JSON con datos de legajos
-        logger_callback: Función para logging (debe aceptar (message, level))
-
     Returns:
-        Tuple: (resultados, estadísticas) donde:
-        - resultados: Lista de tuplas (id_legajo, codigo_variable, valor) o None
-        - estadísticas: Diccionario con métricas del procesamiento
+        - resultados: Lista de tuplas (id_legajo, codigo_variable, valor) o None.
+        - stats: métricas de procesamiento.
+        - resumen_horarios: dict {id_legajo: resumen} si está disponible en el JSON; {} si no.
     """
-    # Configuración del logger tradicional
-    logger = logging.getLogger(__name__)
-    
-    def log(message: str, level: str = "info"):
-        """Función helper para logging consistente"""
-        if logger_callback:
-            logger_callback(message, level)
-        # También mantenemos el logging tradicional
-        getattr(logger, level)(message)
-
-    # Inicialización de estadísticas
     stats = {
         'total_legajos': 0,
         'legajos_procesados': 0,
@@ -345,88 +307,94 @@ def procesar_archivo_json(ruta_archivo: str, logger_callback: Callable[[str, str
         'variables_calculadas': 0,
         'errores_por_tipo': defaultdict(int)
     }
+    resumen_horarios: Dict[Any, Any] = {}
 
     try:
-        log(f"📂 Cargando archivo JSON: {ruta_archivo}", "info")
-        
+        logger.info(f"📂 Cargando archivo JSON: {ruta_archivo}")
         with open(ruta_archivo, 'r', encoding='utf-8') as f:
             data = json.load(f)
 
         if 'legajos' not in data:
             error_msg = "El archivo JSON no contiene la clave 'legajos'"
-            log(error_msg, "error")
-            return None, stats
+            logger.error(error_msg)
+            return None, stats, resumen_horarios
 
         stats['total_legajos'] = len(data['legajos'])
-        resultados = []
-        
-        log(f"🔍 Iniciando procesamiento de {stats['total_legajos']} legajos", "info")
+        resultados: List[Tuple[int, int, Any]] = []
+        logger.info(f"🔍 Iniciando procesamiento de {stats['total_legajos']} legajos")
+
+        # ---- EXTRA: construir resumen_horarios de forma tolerante ----
+        for leg in data['legajos']:
+            try:
+                leg_id = leg.get('id_legajo') or leg.get('legajo') or leg.get('id') or leg.get('Legajo')
+                if leg_id is None:
+                    continue
+                resumen = (
+                    (leg.get('horario') or {}).get('resumen')
+                    or leg.get('resumen_horario')
+                    or leg.get('ResumenHorario')
+                )
+                if resumen is not None:
+                    resumen_horarios[leg_id] = resumen
+            except Exception as _:
+                # No frenamos por errores de resumen
+                pass
+        # ---- fin EXTRA ----
 
         for i, legajo in enumerate(data['legajos'], 1):
             legajo_id = legajo.get('id_legajo', 'DESCONOCIDO')
             try:
-                log(f"Procesando legajo {i}/{stats['total_legajos']} (ID: {legajo_id})", "debug")
+                logger.debug(f"Procesando legajo {i}/{stats['total_legajos']} (ID: {legajo_id})")
 
                 if not validar_estructura_legajo(legajo):
                     stats['legajos_con_error'] += 1
                     stats['errores_por_tipo']['estructura_invalida'] += 1
-                    log(f"Estructura inválida en legajo {legajo_id}", "warning")
+                    logger.warning(f"Estructura inválida en legajo {legajo_id}")
                     continue
 
                 variables_legajo = calcular_variables(legajo)
-                
                 if not variables_legajo:
-                    log(f"Legajo {legajo_id} no generó variables calculadas", "debug")
+                    logger.debug(f"Legajo {legajo_id} no generó variables calculadas")
                     continue
 
-                # Agregar variables a resultados
                 for var_codigo, var_valor in variables_legajo:
                     resultados.append((legajo_id, var_codigo, var_valor))
-                
+
                 stats['legajos_procesados'] += 1
                 stats['variables_calculadas'] += len(variables_legajo)
-                
-                log(f"✓ Legajo {legajo_id} procesado. Variables: {len(variables_legajo)}", "debug")
 
-                # Log de progreso cada 10 legajos
                 if i % 10 == 0:
-                    log(f"📊 Progreso: {i}/{stats['total_legajos']} legajos | "
-                        f"Éxitos: {stats['legajos_procesados']} | "
-                        f"Errores: {stats['legajos_con_error']}", "info")
+                    logger.info(f"📊 Progreso: {i}/{stats['total_legajos']} legajos | "
+                                f"Éxitos: {stats['legajos_procesados']} | Errores: {stats['legajos_con_error']}")
 
             except Exception as e:
                 stats['legajos_con_error'] += 1
-                error_type = type(e).__name__
-                stats['errores_por_tipo'][error_type] += 1
-                
-                log(f"⚠ Error procesando legajo {legajo_id}: {str(e)}", "error")
-                log(f"Datos legajo problemático: {json.dumps(legajo, indent=2)[:300]}...", "debug")
-                continue
+                stats['errores_por_tipo'][type(e).__name__] += 1
+                logger.error(f"⚠ Error procesando legajo {legajo_id}: {str(e)}")
+                logger.debug(f"Datos legajo problemático: {json.dumps(legajo, indent=2)[:300]}...")
 
-        # Resultados finales
         if resultados:
             resultados_ordenados = sorted(resultados, key=lambda x: (x[0], x[1]))
-            log(f"""✅ Proceso completado:
-                \n- Legajos procesados: {stats['legajos_procesados']}/{stats['total_legajos']}
-                \n- Variables calculadas: {stats['variables_calculadas']}
-                \n- Errores: {stats['legajos_con_error']}
-                \n- Tipos de errores: {dict(stats['errores_por_tipo'])}""", "info")
-            
-            return resultados_ordenados, stats
+            logger.info(
+                f"✅ Proceso completado:\n- Legajos procesados: {stats['legajos_procesados']}/{stats['total_legajos']}\n"
+                f"- Variables calculadas: {stats['variables_calculadas']}\n- Errores: {stats['legajos_con_error']}\n"
+                f"- Tipos de errores: {dict(stats['errores_por_tipo'])}"
+            )
+            return resultados_ordenados, stats, resumen_horarios
         else:
-            log("❌ No se generaron resultados válidos", "warning")
-            return None, stats
+            logger.warning("❌ No se generaron resultados válidos")
+            return None, stats, resumen_horarios
 
     except json.JSONDecodeError as je:
-        log(f"El archivo no es un JSON válido: {str(je)}", "error")
-        return None, stats
+        logger.error(f"El archivo no es un JSON válido: {str(je)}")
+        return None, stats, resumen_horarios
     except FileNotFoundError:
-        log(f"Archivo no encontrado: {ruta_archivo}", "error")
-        return None, stats
+        logger.error(f"Archivo no encontrado: {ruta_archivo}")
+        return None, stats, resumen_horarios
     except Exception as e:
-        log(f"Error inesperado: {str(e)}\n{traceback.format_exc()}", "error")
-        return None, stats
-
+        logger.critical(f"Error inesperado: {str(e)}\n{traceback.format_exc()}")
+        return None, stats, resumen_horarios
+    
 def guardar_resultados_csv(resultados: List[Tuple[int, int, Any]], nombre_archivo: str = 'variables_calculadas.xlsx') -> None:
     try:
         # Crear libro y hoja
@@ -437,7 +405,7 @@ def guardar_resultados_csv(resultados: List[Tuple[int, int, Any]], nombre_archiv
         # Estilo encabezado
         encabezados = ['LEGAJO', 'CODIGO VARIABLE', 'VALOR']
         header_font = Font(bold=True, color="000000")
-        header_fill = PatternFill(start_color="CCE5FF", end_color="CCE5FF", fill_type="solid")  # Celeste pastel
+        header_fill = PatternFill(start_color="CCE5FF", end_color="CCE5FF", fill_type="solid")
 
         for col_num, encabezado in enumerate(encabezados, 1):
             celda = ws.cell(row=1, column=col_num, value=encabezado)
@@ -461,7 +429,7 @@ def guardar_resultados_csv(resultados: List[Tuple[int, int, Any]], nombre_archiv
                 ws.cell(row=fila_excel, column=3, value=valor_str)
                 fila_excel += 1
             else:
-                logging.warning(f"Se encontró un resultado mal formado y fue omitido: {fila}")
+                logger.warning(f"Se encontró un resultado mal formado y fue omitido: {fila}")
 
         # Ajuste automático de ancho
         for col in ws.columns:
@@ -471,26 +439,19 @@ def guardar_resultados_csv(resultados: List[Tuple[int, int, Any]], nombre_archiv
         # Guardar archivo
         nombre_archivo = os.path.join(os.getcwd(), nombre_archivo)
         wb.save(nombre_archivo)
-        logging.info(f"✅ Archivo Excel guardado con formato visual en: {nombre_archivo}")
+        logger.info(f"✅ Archivo Excel guardado con formato visual en: {nombre_archivo}")
 
     except Exception as e:
-        logging.error(f"❌ Error al guardar archivo Excel: {e}", exc_info=True)      
+        logger.error(f"❌ Error al guardar archivo Excel: {e}", exc_info=True)
 
 def calcular_variables(legajo: Dict[str, Any]) -> List[Tuple[int, Any]]:
     """
-    Calcula todas las variables para un legajo según las reglas establecidas
-
-    Args:
-        legajo: Diccionario con los datos del legajo
-
-    Returns:
-        Lista de tuplas con (codigo_variable, valor)
+    Calcula todas las variables para un legajo según las reglas establecidas.
     """
+    variables = []
+    id_legajo = legajo.get('id_legajo', 'ID_DESCONOCIDO_EN_CALCULO')
     try:
-        variables = []
-        id_legajo = legajo.get('id_legajo', 'ID_DESCONOCIDO_EN_CALCULO')
-
-        logger.debug(f"\nProcesando legajo ID: {id_legajo}")
+        logger.debug(f"\nIniciando cálculo para legajo ID: {id_legajo}")
 
         # 1. Validación inicial (Variable 9000)
         if not validar_horario(legajo):
@@ -526,24 +487,19 @@ def calcular_variables(legajo: Dict[str, Any]) -> List[Tuple[int, Any]]:
         variables.append((4, round(v4, 2)))
         logger.debug(f"Legajo {id_legajo}, Variable 4 calculada: {v4}")
 
-        # Se obtiene el valor de v1157 antes de la condición
         v1157 = obtener_horas_nocturnas(legajo, es_guardia_actual)
         
-        # Lógica para V1157 y V1498 (Adicional nocturno)
-        if v239 == v1157:
+        if v239 == v1157 and v239 > 0:
             logger.debug(f"Legajo {id_legajo}: No se calcula V1157, las horas semanales son totalmente nocturnas ({v239}h).")
-            # Se calcula solo el adicional nocturno si corresponde
             if aplicar_adicional_nocturno(legajo, v1157, es_guardia_actual):
                 variables.append((1498, 1))
                 logger.debug(f"Legajo {id_legajo}, Variable 1498 aplicada (Adicional nocturno)")
-        else:
-            # Lógica original: si hay horas nocturnas, se calculan ambas variables
-            if v1157 is not None and v1157 > 0:
-                variables.append((1157, round(v1157, 2)))
-                logger.debug(f"Legajo {id_legajo}, Variable 1157 calculada: {v1157}")
-                if aplicar_adicional_nocturno(legajo, v1157, es_guardia_actual):
-                    variables.append((1498, 1))
-                    logger.debug(f"Legajo {id_legajo}, Variable 1498 aplicada (Adicional nocturno)")
+        elif v1157 is not None and v1157 > 0:
+            variables.append((1157, round(v1157, 2)))
+            logger.debug(f"Legajo {id_legajo}, Variable 1157 calculada: {v1157}")
+            if aplicar_adicional_nocturno(legajo, v1157, es_guardia_actual):
+                variables.append((1498, 1))
+                logger.debug(f"Legajo {id_legajo}, Variable 1498 aplicada (Adicional nocturno)")
 
         v992 = calcular_extension_horaria(legajo, v239)
         if v992 is not None:
@@ -593,38 +549,20 @@ def calcular_variables(legajo: Dict[str, Any]) -> List[Tuple[int, Any]]:
             variables.append((426, 1))
             logger.debug(f"Legajo {id_legajo}, Variable 426 aplicada (Caja/Seguro)")
 
-        # Variables informativas
+        # Variables informativas, médicas, etc.
         procesar_variables_informativas(legajo, variables)
-
-        # Variables médicas
         if es_medico_productividad(legajo):
-            variables.extend([
-                (1740, 1),
-                (1251, 1),
-                (1252, 1)
-            ])
+            variables.extend([(1740, 1), (1251, 1), (1252, 1)])
             logger.debug(f"Legajo {id_legajo}, Variables médicas aplicadas (1740, 1251, 1252)")
 
         logger.info(f"Legajo {id_legajo}: {len(variables)} variables calculadas correctamente")
         
-        # --- ¡AQUÍ ESTÁ EL PRINT DE DEPURACIÓN! ---
-        # Este print se ejecutará justo antes de que la lista 'variables' sea retornada
-        # por la función calcular_variables.
-        print(f"\n--- DEBUG: Lista final de variables para Legajo {id_legajo} antes de retornar ---")
-        print(variables)
-        print("------------------------------------------------------------------------------------\n")
-        # ---------------------------------------------
-
+        logger.debug(f"--- Variables finales para Legajo {id_legajo}: {variables} ---")
         return variables
 
     except Exception as e:
-        logger.error(f"Error calculando variables para legajo {legajo.get('id_legajo', 'DESCONOCIDO')}: {str(e)}", exc_info=True)
-        # --- ¡AQUÍ TAMBIÉN AGREGAMOS EL PRINT EN CASO DE ERROR! ---
-        print(f"\n--- DEBUG: ERROR! Lista de variables hasta el momento para Legajo {id_legajo} ---")
-        print(variables)
-        print(f"Error: {str(e)}")
-        print("------------------------------------------------------------------------------------\n")
-        # --------------------------------------------------------
+        logger.error(f"Error calculando variables para legajo {id_legajo}: {str(e)}", exc_info=True)
+        logger.debug(f"--- DEBUG: ERROR! Lista de variables hasta el momento para Legajo {id_legajo}: {variables} ---")
         return []
     
 # FUNCIONES DE VALIDACIÓN
@@ -761,6 +699,83 @@ def es_puesto_especial(puesto_normalizado: str) -> bool:
             return True
             
     return False
+
+def _parse_fecha_flexible(valor: Any) -> Optional[datetime]:
+    """
+    Intenta parsear una fecha en múltiples formatos comunes.
+    Soporta:
+      - Separadores: '/', '-', '.'
+      - Años de 2 o 4 dígitos (25 -> 2025 por %y)
+      - Ordenes habituales: dd/mm/aa(aa), dd-mm-aa(aa), aa(aa)-mm-dd, aa(aa)/mm/dd, dd.mm.aa(aa)
+    Retorna un datetime o None si no pudo parsear.
+    """
+    logger = logging.getLogger(__name__)
+
+    if valor is None:
+        return None
+
+    # Normalizar a str y limpiar espacios
+    s = str(valor).strip()
+    if not s:
+        return None
+
+    # Normalizamos unicode (por si viene con caracteres raros)
+    s = unicodedata.normalize("NFKC", s)
+
+    # Cambiamos cualquier separador no numérico por '/'
+    s_norm = re.sub(r"[^0-9]", "/", s)
+    s_norm = re.sub(r"/+", "/", s_norm).strip("/")
+
+    # Lista de formatos a probar (dos y cuatro dígitos de año)
+    formatos = [
+        "%d/%m/%Y", "%d/%m/%y",
+        "%d-%m-%Y", "%d-%m-%y",  # por si el usuario no normalizó separadores
+        "%Y/%m/%d", "%y/%m/%d",
+        "%Y-%m-%d", "%y-%m-%d",
+        "%d.%m.%Y", "%d.%m.%y",
+    ]
+
+    # Primero probamos con la cadena original y sus variantes normalizadas
+    candidatos = {s, s_norm, s_norm.replace("/", "-"), s_norm.replace("/", ".")}
+
+    for cand in list(candidatos):
+        for fmt in formatos:
+            try:
+                # Si el formato usa '-' o '.' lo probamos también
+                cand_fmt = cand
+                if "." in fmt:
+                    cand_fmt = cand.replace("/", ".")
+                elif "-" in fmt:
+                    cand_fmt = cand.replace("/", "-")
+                else:
+                    cand_fmt = cand.replace("-", "/").replace(".", "/")
+
+                dt = datetime.strptime(cand_fmt, fmt)
+                # %y mapea 00-68 a 2000-2068 -> "25" => 2025 (justo lo que queremos)
+                return dt
+            except ValueError:
+                continue
+
+    # Heurística extra: si tenemos exactamente 3 grupos numéricos, intentamos reordenar
+    partes = re.split(r"[^\d]", s)
+    partes = [p for p in partes if p.isdigit()]
+    if len(partes) == 3:
+        d, m, a = partes[0], partes[1], partes[2]
+        # Intento dd/mm/aa(aa)
+        for fmt in ("%d/%m/%Y", "%d/%m/%y"):
+            try:
+                return datetime.strptime(f"{d}/{m}/{a}", fmt)
+            except ValueError:
+                pass
+        # Intento aa(aa)/mm/dd
+        for fmt in ("%Y/%m/%d", "%y/%m/%d"):
+            try:
+                return datetime.strptime(f"{a}/{m}/{d}", fmt)
+            except ValueError:
+                pass
+
+    logger.debug(f"_parse_fecha_flexible: no se pudo interpretar la fecha '{valor}'")
+    return None
 
 # ==============================
 # FUNCIONES DE CÁLCULO
@@ -999,28 +1014,40 @@ def aplicar_adicional_nocturno(legajo: Dict[str, Any], horas_nocturnas: float, e
         return False
 
 def obtener_fecha_fin_contrato(legajo: Dict[str, Any]) -> Optional[str]:
+    """
+    Lee 'contratacion.fechas.fin' y 'contratacion.tipo'.
+    Si el tipo indica plazo fijo/determinado y la fecha es parseable,
+    devuelve la fecha en formato dd/mm/YYYY; en caso contrario, None.
+    Acepta años de 2 dígitos (25 -> 2025).
+    """
+    logger = logging.getLogger(__name__)
     try:
-        # Uso robusto de .get()
-        contratacion_data = legajo.get('contratacion', {})
-        tipo_contrato = contratacion_data.get('tipo')
-        fechas_data = contratacion_data.get('fechas', {})
-        fecha_fin = fechas_data.get('fin')
+        contratacion = legajo.get("contratacion", {}) or {}
+        tipo_contrato = str(contratacion.get("tipo", "") or "").lower()
+        fechas = contratacion.get("fechas", {}) or {}
+        fecha_fin_raw = fechas.get("fin")
 
-        # Asegura que tipo_contrato sea string o vacío para .lower()
-        tipo_contrato_lower = str(tipo_contrato).lower() if tipo_contrato is not None else ""
+        # Solo aplica si el tipo sugiere contrato a plazo/determinado
+        # (soporta 'plazo_fijo', 'tiempo_completo_plazo_fijo', 'determinado', etc.)
+        if not any(t in tipo_contrato for t in ("plazo_fijo", "determinado")):
+            return None
 
-        if (fecha_fin is not None and
-            any(t in tipo_contrato_lower for t in ['plazo_fijo', 'determinado'])):
-            try:
-                fecha_obj = datetime.strptime(str(fecha_fin), '%d/%m/%Y') # Asegura que fecha_fin es string
-                return fecha_obj.strftime('%d/%m/%Y')
-            except ValueError:
-                logger.warning(f"Legajo {legajo.get('id_legajo', 'N/A')}: Formato de fecha inválido - '{fecha_fin}'")
-                return None
-        return None
+        fecha_obj = _parse_fecha_flexible(fecha_fin_raw)
+        if not fecha_obj:
+            logger.warning(
+                f"Legajo {legajo.get('id_legajo', 'N/A')}: "
+                f"No se pudo interpretar fecha de fin '{fecha_fin_raw}'"
+            )
+            return None
+
+        return fecha_obj.strftime("%d/%m/%Y")
+
     except Exception as e:
-        logger.error(f"Legajo {legajo.get('id_legajo', 'N/A')}: Error obteniendo fecha fin contrato - {str(e)}")
-        logger.error(traceback.format_exc())
+        logger.error(
+            f"Legajo {legajo.get('id_legajo', 'N/A')}: "
+            f"Error obteniendo fecha fin contrato - {e}",
+            exc_info=True
+        )
         return None
 
 def aplicar_no_liquida_plus(legajo: Dict[str, Any], es_guardia: bool) -> bool:
@@ -1104,7 +1131,7 @@ def procesar_variables_informativas(legajo: Dict[str, Any], variables: List[Tupl
                                     .replace("intangib", "intangibilidad"))
 
         # Obtener el valor de sueldo_base
-        sueldo_base = legajo.get('remuneracion', {}).get('sueldo_base') # Puede ser None si no existe o es null
+        sueldo_base = legajo.get('remuneracion', {}).get('sueldo_base')  # Puede ser None si no existe o es null
 
         # --- Variables 7000 (Cesión) y 8000 (Intangibilidad) ---
         if any(term in adicionables_normalizado for term in TERMINOS_CESION):
@@ -1114,20 +1141,20 @@ def procesar_variables_informativas(legajo: Dict[str, Any], variables: List[Tupl
         if "intangibilidad" in adicionables_para_intang:
             variables.append((8000, "Revisar Importe o % para Intangibilidad Salarial"))
             logger.debug(f"Legajo {id_legajo}: Variable 8000 aplicada (Intangibilidad)")
+
         # --- Nueva Variable 9000 (Adicional Voluntario) ---
         terminos_adic_voluntario = ["adic voluntario", "adicional voluntario", "voluntario empresa"]
         if any(term in adicionables_normalizado for term in terminos_adic_voluntario):
             variables.append((9000, "Revisar Adic Voluntario Empresa"))
-            logger.debug(f"Legajo {id_legajo}: Variable 9000 aplicada (Adic Voluntario)")    
+            logger.debug(f"Legajo {id_legajo}: Variable 9000 aplicada (Adic Voluntario)")
+
         # --- Nueva Variable 11000 (PPR) ---
-        # Condición 1: "PPR" en adicionables_normalizado
         ppr_en_adicionables = "ppr" in adicionables_normalizado
-        
-        # Condición 2: sueldo_base tiene un valor (no es None)
         sueldo_base_tiene_valor = sueldo_base is not None
-
-        logger.debug(f"Legajo {id_legajo}: Evaluación V11000 -> ¿'PPR' en adicionables? {ppr_en_adicionables}. ¿Sueldo base tiene valor? {sueldo_base_tiene_valor} (valor: {sueldo_base})")
-
+        logger.debug(
+            f"Legajo {id_legajo}: Evaluación V11000 -> ¿'PPR' en adicionables? {ppr_en_adicionables}. "
+            f"¿Sueldo base tiene valor? {sueldo_base_tiene_valor} (valor: {sueldo_base})"
+        )
         if ppr_en_adicionables and sueldo_base_tiene_valor:
             variables.append((11000, "Tiene PPR. Revisar archivo"))
             logger.debug(f"Legajo {id_legajo}: Variable 11000 aplicada (PPR)")
@@ -1137,9 +1164,32 @@ def procesar_variables_informativas(legajo: Dict[str, Any], variables: List[Tupl
             variables.append((10000, "Cargar Título en CP, es Licenciado"))
             logger.debug(f"Legajo {id_legajo}: Variable 10000 aplicada (Licenciado Bioimágenes)")
 
+        # --- Variable 12000 (Falta sueldo bruto pactado para PFC) ---
+        # Dispara si:
+        #  - categoría == fc_pfc
+        #  - falta sueldo_base (ausente, None o "")
+        #  - NO dice "full guardia" en adicionables
+        categoria = (legajo.get('contratacion', {}).get('categoria') or '').strip().lower()
+        remuneracion = legajo.get('remuneracion', {})
+
+        if categoria == "fc_pfc":
+            sueldo_base_falta = (not isinstance(remuneracion, dict) or
+                                 ('sueldo_base' not in remuneracion) or
+                                 remuneracion.get('sueldo_base') in (None, ""))
+            tiene_full_guardia = "full guardia" in adicionables_normalizado  # ya normalizado arriba
+
+            logger.debug(
+                f"Legajo {id_legajo}: Evaluación V12000 -> "
+                f"categoria={categoria}, sueldo_base_falta={sueldo_base_falta}, "
+                f"tiene_full_guardia={tiene_full_guardia}"
+            )
+
+            if sueldo_base_falta and not tiene_full_guardia:
+                variables.append((12000, "Falta sueldo bruto pactado. Revisar Var 1"))
+                logger.debug(f"Legajo {id_legajo}: Variable 12000 aplicada (Falta sueldo bruto pactado)")
+
     except Exception as e:
         logger.error(f"Legajo {id_legajo}: Error procesando variables informativas - {str(e)}", exc_info=True)
-
 
 def es_medico_productividad(legajo: Dict[str, Any]) -> bool:
     """Determina si es médico de productividad (Variables 1740, 1251, 1252)"""
@@ -1333,24 +1383,27 @@ def calcular_horas_mensuales(legajo: Dict[str, Any], v239: float) -> float:
 def calcular_jornada_reducida(legajo: Dict[str, Any], es_guardia: bool) -> Optional[float]:
     """
     Calcula la variable 1167 (% de jornada reducida) con detección robusta de puestos especiales.
+    Versión mejorada con manejo más robusto de categorías FC/PFC.
     """
     try:
-        # --- Extracción y normalización ---
+        # --- Extracción de datos ---
         id_legajo = legajo.get('id_legajo', 'N/A')
         datos_personales = legajo.get('datos_personales', {})
         puesto = normalizar_texto(datos_personales.get('puesto', ''))
         sector = normalizar_texto(datos_personales.get('sector', {}).get('principal', ''))
         total_horas = legajo.get('horario', {}).get('resumen', {}).get('total_horas_semanales', 0.0)
-        categoria_raw = legajo.get('contratacion', {}).get('categoria', '')
-        categoria = normalizar_texto(categoria_raw)
+        categoria = legajo.get('contratacion', {}).get('categoria', '')  # Mantenemos el valor original
 
-        # --- NUEVO LOG DE DEPURACIÓN ---
-        logger.debug(f"[1167] Legajo {id_legajo}: Categoría original: '{categoria_raw}', Categoría normalizada: '{categoria}'")
+        # --- NUEVO LOG DE DEPURACIÓN MEJORADO ---
+        logger.debug(f"[1167] Legajo {id_legajo}: Categoría raw: '{categoria}'")
 
-        # --- Validación de la nueva condición ---
-        if categoria in ('pfc', 'fc pfc'):
-            logger.debug(f"[1167] Legajo {id_legajo}: Excluido por categoría '{categoria}'")
+        # --- Validación mejorada de categorías FC/PFC ---
+        # Verificamos directamente las variantes conocidas sin normalizar
+        if isinstance(categoria, str) and categoria.lower().replace(' ', '_') in {'pfc', 'fc_pfc'}:
+            logger.debug(f"[1167] Legajo {id_legajo}: Excluido por categoría FC/PFC: '{categoria}'")
             return None
+
+        # --- Validación de condiciones de exclusión ---
         if es_guardia:
             logger.debug(f"[1167] Legajo {id_legajo}: Excluido (es guardia)")
             return None
@@ -1369,21 +1422,22 @@ def calcular_jornada_reducida(legajo: Dict[str, Any], es_guardia: bool) -> Optio
         # --- Determinar piso horario ---
         dias_trabajo = set(legajo.get('horario', {}).get('resumen', {}).get('dias_trabajo', []))
         
-        # Lógica para la regla especial
+        # Lógica para la regla especial de 18 horas
         if total_horas == 18.0 and dias_trabajo.issuperset(DIAS_ESPECIALES):
             piso = 45.0
             resultado = round((total_horas / piso) * 100, 4)
-            logger.info(f"[1167] Legajo {id_legajo}: APLICA (regla 18h en L/M/V → {resultado}%)")
+            logger.info(f"[1167] Legajo {id_legajo}: APLICA (regla especial 18h en L/M/V → {resultado}%)")
             return resultado
+        
+        # --- Asignación de piso horario según sector ---
+        if sector in SECTORES_IMAGENES:
+            piso = PISOS_HORARIOS.get(normalizar_texto('IMAGENES'), 36.0)
+        elif sector == normalizar_texto('LABORATORIO'):
+            piso = PISOS_HORARIOS.get(normalizar_texto('LABORATORIO'), 36.0)
         else:
-            if sector in SECTORES_IMAGENES:
-                piso = PISOS_HORARIOS.get(normalizar_texto('IMAGENES'), 36.0)
-            elif sector == normalizar_texto('LABORATORIO'):
-                piso = PISOS_HORARIOS.get(normalizar_texto('LABORATORIO'), 36.0)
-            else:
-                piso = PISOS_HORARIOS.get(normalizar_texto('GENERAL'), 36.0)
+            piso = PISOS_HORARIOS.get(normalizar_texto('GENERAL'), 36.0)
 
-        # --- Cálculo final ---
+        # --- Cálculo final del porcentaje ---
         if total_horas < piso:
             resultado = round((total_horas / piso) * 100, 4)
             logger.info(f"[1167] Legajo {id_legajo}: APLICA ({total_horas}h < {piso}h → {resultado}%)")
@@ -1903,3 +1957,48 @@ def generar_reporte_final(resultados: List[Tuple[int, int, Any]], ruta_archivo: 
 
     except Exception as e:
         logger.error(f"Error generando reporte final: {str(e)}")
+        
+# =============== BLOQUE DE EJECUCIÓN INDEPENDIENTE ===============
+# =============== BLOQUE DE EJECUCIÓN INDEPENDIENTE ===============
+if __name__ == '__main__':
+    # Esta sección SÓLO se ejecuta cuando corres este archivo directamente.
+    
+    # 1. Se ha eliminado la configuración local de logging de aquí.
+    #    Ahora, la configuración debe hacerse a nivel de la aplicación
+    #    que use este script, como una app de Streamlit, para evitar
+    #    conflictos y duplicación.
+    #
+    #    Ejemplo de configuración para una aplicación que importe este script:
+    #    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
+
+    logger.info("--- Ejecutando json_a_excel.py en modo de prueba ---")
+    
+    # 2. Tu código de prueba
+    try:
+        # Crea un archivo JSON de prueba si no existe
+        json_prueba = {
+            "legajos": [
+                {
+                    "id_legajo": 101,
+                    "remuneracion": {"sueldo_base": 1000},
+                    "horario": {
+                        "resumen": {"total_horas_semanales": 40, "total_horas_nocturnas": 0, "dias_trabajo": [0,1,2,3,4]},
+                        "bloques": [{"dias_semana": [0,1,2,3,4], "hora_inicio": "09:00", "hora_fin": "17:00"}]
+                    },
+                    "contratacion": {"categoria": "dc_1_categoria"},
+                    "datos_personales": {"sede": "Pilar", "sector": {"principal": "Administración"}}
+                }
+            ]
+        }
+        with open("horarios_prueba.json", "w") as f:
+            json.dump(json_prueba, f)
+
+        # Llama a tus funciones principales
+        resultados, stats = procesar_archivo_json("horarios_prueba.json")
+        if resultados:
+            guardar_resultados_csv(resultados, "resultados_de_prueba.xlsx")
+        
+        generar_reporte_parcial(stats, "horarios_prueba.json")
+
+    except Exception as e:
+        logger.critical(f"Ocurrió un error catastrófico durante la prueba: {e}", exc_info=True)
