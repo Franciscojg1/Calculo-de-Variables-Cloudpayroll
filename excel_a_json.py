@@ -534,10 +534,14 @@ def calcular_resumen_horario(bloques, nombre_sede=None):
 
 def procesar_excel_a_json(df, output_json_path="horarios.json"):
     """
-    Procesa un DataFrame de pandas y genera un archivo JSON normalizado.
-    Ahora utiliza el sistema de logging estándar de Python.
+    Procesa un DataFrame de pandas y genera un archivo JSON normalizado y enriquecido.
+    - Incluye información del crudo (sector, subsector, puesto, sede, categoría, modalidad, fechas, sueldo, adicionales).
+    - Conserva el texto original del horario en 'horario.texto_original'.
+    - Usa el sistema de logging estándar.
     """
     try:
+        logger = logging.getLogger('excel_a_json')
+
         # Inicialización de estadísticas
         stats = {
             'total_filas': len(df),
@@ -546,17 +550,16 @@ def procesar_excel_a_json(df, output_json_path="horarios.json"):
             'filas_omitidas': 0,
             'total_errores_validacion': 0
         }
-        
+
         all_normalized_data = []
-        
-        # Usamos el logger directamente
+
         logger.info(f"🚀 Iniciando procesamiento de {len(df)} filas")
 
         # Procesamiento de cada fila
         for index, row in df.iterrows():
             legajo_str = f"Legajo: {row.get('Legajo', 'N/A')}"
             logger.debug(f"Procesando fila {index + 1}/{len(df)} - {legajo_str}")
-            
+
             validacion = validar_fila_detallada(row)
             if not validacion['fila_valida']:
                 stats['filas_omitidas'] += 1
@@ -566,43 +569,100 @@ def procesar_excel_a_json(df, output_json_path="horarios.json"):
 
             legajo = row['Legajo']
             try:
+                # Tomamos el horario original tal como viene en el Excel
                 horario_original = str(row['Horario completo'])
-                logger.debug(f"Interpretando horario para legajo {legajo}: {horario_original[:50]}...")
-                
+                logger.debug(f"Interpretando horario para legajo {legajo}: {horario_original[:80]}...")
+
+                # Parseo a bloques normalizados
                 normalized_schedule = parse_schedule_string(horario_original)
-                
                 if not normalized_schedule:
                     stats['errores_parsing'] += 1
-                    logger.error(f"❌ Error de Parseo para legajo {legajo}. Horario no interpretable: {horario_original[:100]}")
+                    logger.error(f"❌ Error de Parseo para legajo {legajo}. Horario no interpretable: {horario_original[:120]}")
                     continue
 
-                # ... (el resto de tu lógica de construcción de 'empleado_mejorado' sigue igual)
+                # Construcción de objeto enriquecido
                 empleado_mejorado = {
                     "id_legajo": int(legajo),
-                    "datos_personales": { "nombre": safe_str_get(row, 'Nombre completo'), "sede": validacion['sede_normalizada']['nombre_normalizado'], "sector": { "principal": safe_str_get(row, 'Sector'), "subsector": safe_str_get(row, 'Subsector') }, "puesto": safe_str_get(row, 'Puesto') },
-                    "contratacion": { "tipo": normalize_modalidad(row.get('Modalidad contratación')), "categoria": normalize_categoria(row.get('Categoría')), "fechas": { "ingreso": parsear_fecha(row.get('Fecha ingreso')), "fin": parsear_fecha(row.get('Fecha de fin')) } },
-                    "horario": { "bloques": [dict(bloque, legajo=legajo) for bloque in normalized_schedule], "resumen": calcular_resumen_horario(normalized_schedule) },
-                    "remuneracion": { "sueldo_base": clean_and_convert_to_float(row.get('Sueldo bruto pactado')), "moneda": "ARS", "adicionables": safe_str_get(row, 'Adicionales') }
+
+                    # Datos personales / origen
+                    "datos_personales": {
+                        "nombre": safe_str_get(row, 'Nombre completo'),
+                        "sede": validacion['sede_normalizada']['nombre_normalizado'],
+                        "sector": {
+                            "principal": safe_str_get(row, 'Sector'),
+                            "subsector": safe_str_get(row, 'Subsector')
+                        },
+                        "puesto": safe_str_get(row, 'Puesto')
+                    },
+
+                    # Contratación
+                    "contratacion": {
+                        "tipo": normalize_modalidad(row.get('Modalidad contratación')),
+                        "categoria": normalize_categoria(row.get('Categoría')),
+                        "fechas": {
+                            "ingreso": parsear_fecha(row.get('Fecha ingreso')),
+                            "fin": parsear_fecha(row.get('Fecha de fin'))
+                        }
+                    },
+
+                    # Horario (bloques, resumen estructurado y texto original)
+                    "horario": {
+                        "texto_original": horario_original,
+                        "bloques": [dict(bloque, legajo=legajo) for bloque in normalized_schedule],
+                        "resumen": calcular_resumen_horario(normalized_schedule)
+                    },
+
+                    # Remuneración y observaciones
+                    "remuneracion": {
+                        "sueldo_base": clean_and_convert_to_float(row.get('Sueldo bruto pactado')),
+                        "moneda": "ARS",
+                        "adicionables": safe_str_get(row, 'Adicionales')
+                    },
+
+                    # (Opcional) snapshot del crudo útil para auditoría
+                    "crudo_min": {
+                        "Legajo": row.get('Legajo'),
+                        "Nombre completo": safe_str_get(row, 'Nombre completo'),
+                        "Sector": safe_str_get(row, 'Sector'),
+                        "Subsector": safe_str_get(row, 'Subsector'),
+                        "Puesto": safe_str_get(row, 'Puesto'),
+                        "Sede": safe_str_get(row, 'Sede'),
+                        "Categoría": row.get('Categoría'),
+                        "Modalidad contratación": row.get('Modalidad contratación'),
+                        "Fecha ingreso": row.get('Fecha ingreso'),
+                        "Fecha de fin": row.get('Fecha de fin'),
+                        "Sueldo bruto pactado": row.get('Sueldo bruto pactado'),
+                        "Adicionales": safe_str_get(row, 'Adicionales'),
+                        "Horario completo": horario_original
+                    }
                 }
-                
+
                 all_normalized_data.append(empleado_mejorado)
                 stats['procesados_exitosamente'] += 1
-                
                 logger.debug(f"✓ Legajo {legajo} procesado correctamente. Bloques horarios: {len(normalized_schedule)}")
 
             except Exception as e:
                 stats['filas_omitidas'] += 1
-                logger.error(f"⚠ Error inesperado procesando legajo {legajo}: {str(e)}\nDatos fila: {dict(row.dropna())}")
+                logger.error(
+                    f"⚠ Error inesperado procesando legajo {legajo}: {str(e)}\n"
+                    f"Datos fila: { {k: v for k, v in dict(row).items() if pd.notna(v)} }",
+                    exc_info=True
+                )
 
-        # ... (la lógica de 'output_mejorado' y 'json.dump' sigue igual)
+        # Salida final
         output_mejorado = {
-            "metadata": { "version_esquema": "1.2", "fecha_generacion": datetime.now().isoformat(), "estadisticas": { **stats, "total_registros_validos": len(all_normalized_data) }, "sistema_origen": "horarios_parser_streamlit" },
+            "metadata": {
+                "version_esquema": "1.3",
+                "fecha_generacion": datetime.now().isoformat(),
+                "estadisticas": {**stats, "total_registros_validos": len(all_normalized_data)},
+                "sistema_origen": "horarios_parser_streamlit"
+            },
             "legajos": all_normalized_data
         }
+
         with open(output_json_path, 'w', encoding='utf-8') as f:
             json.dump(output_mejorado, f, ensure_ascii=False, indent=2)
 
-        # Resumen final con logger.info
         resumen_msg = f"""
 ✅ Proceso completado:
 - Total filas procesadas: {stats['total_filas']}
@@ -613,13 +673,13 @@ def procesar_excel_a_json(df, output_json_path="horarios.json"):
 """
         logger.info(resumen_msg)
         logger.debug(f"Archivo JSON generado en: {output_json_path}")
+
         return output_json_path
 
     except Exception as e:
         error_msg = f"Error crítico en procesar_excel_a_json: {str(e)}"
-        logger.critical(error_msg) # Usamos critical para errores fatales
+        logging.getLogger('excel_a_json').critical(error_msg, exc_info=True)
         raise RuntimeError(error_msg)
-
 
 def safe_str_get(row, field_name, default=None):
     """Obtiene valores de string de forma segura desde un DataFrame row."""

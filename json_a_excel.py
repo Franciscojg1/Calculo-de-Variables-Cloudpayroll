@@ -293,20 +293,50 @@ TERMINOS_CESION = {normalizar_texto(term) for term in TERMINOS_CESION_RAW}
 # FUNCIONES PRINCIPALES
 # ==============================
 
-def procesar_archivo_json(ruta_archivo: str) -> Tuple[Optional[List[Tuple[int, int, Any]]], Dict[str, Any], Dict[Any, Any]]:
+def procesar_archivo_json(
+    ruta_archivo: str,
+    modo_resumen: str = "mixto",  # "mixto" | "normalizado" | "crudo"
+) -> Tuple[Optional[List[Tuple[int, int, Any]]], Dict[str, Any], Dict[Any, Any]]:
     """
-    Returns:
-        - resultados: Lista de tuplas (id_legajo, codigo_variable, valor) o None.
-        - stats: métricas de procesamiento.
-        - resumen_horarios: dict {id_legajo: resumen} si está disponible en el JSON; {} si no.
+    Procesa el archivo JSON y genera:
+      - resultados: Lista de tuplas (id_legajo, codigo_variable, valor) o None
+      - stats: métricas del procesamiento
+      - resumen_horarios: dict {id_legajo: info_enriquecida}
+
+    modo_resumen:
+      - "mixto": prioriza campos normalizados y hace fallback al crudo si faltan (recomendado)
+      - "normalizado": siempre usa los campos normalizados
+      - "crudo": siempre usa los campos crudos (horario_resumen se desactiva)
     """
-    stats = {
+    logger = logging.getLogger('json_a_excel')
+
+    # Helpers internos para selección de valores
+    def _is_missing(v):
+        if v is None:
+            return True
+        if isinstance(v, str) and v.strip() == "":
+            return True
+        if isinstance(v, (list, dict)) and len(v) == 0:
+            return True
+        return False
+
+    def pick(norm, raw):
+        if modo_resumen == "normalizado":
+            return norm
+        if modo_resumen == "crudo":
+            return raw
+        # mixto (default)
+        return raw if _is_missing(norm) else norm
+
+    # Inicialización de estadísticas
+    stats: Dict[str, Any] = {
         'total_legajos': 0,
         'legajos_procesados': 0,
         'legajos_con_error': 0,
         'variables_calculadas': 0,
-        'errores_por_tipo': defaultdict(int)
+        'errores_por_tipo': defaultdict(int),
     }
+
     resumen_horarios: Dict[Any, Any] = {}
 
     try:
@@ -323,26 +353,49 @@ def procesar_archivo_json(ruta_archivo: str) -> Tuple[Optional[List[Tuple[int, i
         resultados: List[Tuple[int, int, Any]] = []
         logger.info(f"🔍 Iniciando procesamiento de {stats['total_legajos']} legajos")
 
-        # ---- EXTRA: construir resumen_horarios de forma tolerante ----
-        for leg in data['legajos']:
-            try:
-                leg_id = leg.get('id_legajo') or leg.get('legajo') or leg.get('id') or leg.get('Legajo')
-                if leg_id is None:
-                    continue
-                resumen = (
-                    (leg.get('horario') or {}).get('resumen')
-                    or leg.get('resumen_horario')
-                    or leg.get('ResumenHorario')
-                )
-                if resumen is not None:
-                    resumen_horarios[leg_id] = resumen
-            except Exception as _:
-                # No frenamos por errores de resumen
-                pass
-        # ---- fin EXTRA ----
-
         for i, legajo in enumerate(data['legajos'], 1):
-            legajo_id = legajo.get('id_legajo', 'DESCONOCIDO')
+            # ----------- Armado del resumen enriquecido -----------
+            crudo = legajo.get('crudo_min', {}) or {}
+            dp = legajo.get('datos_personales', {}) or {}
+            contr = legajo.get('contratacion', {}) or {}
+            fechas = contr.get('fechas', {}) or {}
+            remu = legajo.get('remuneracion', {}) or {}
+            hor = legajo.get('horario', {}) or {}
+
+            legajo_id = (
+                legajo.get('id_legajo')
+                or crudo.get('Legajo')
+                or legajo.get('legajo')
+                or legajo.get('id')
+                or 'DESCONOCIDO'
+            )
+
+            # sector puede venir como dict en datos_personales
+            sector_dict = dp.get('sector') if isinstance(dp.get('sector'), dict) else {}
+            sector_principal_norm = sector_dict.get('principal') if sector_dict else None
+            sector_sub_norm = sector_dict.get('subsector') if sector_dict else None
+
+            resumen_horarios[legajo_id] = {
+                'nombre_completo': pick(dp.get('nombre'), crudo.get('Nombre completo')),
+                'sector': pick(sector_principal_norm, crudo.get('Sector')),
+                'subsector': pick(sector_sub_norm, crudo.get('Subsector')),
+                'puesto': pick(dp.get('puesto'), crudo.get('Puesto')),
+                'sede': pick(dp.get('sede'), crudo.get('Sede')),
+                'categoria': pick(contr.get('categoria'), crudo.get('Categoría')),
+                'modalidad': pick(contr.get('tipo'), crudo.get('Modalidad contratación')),
+                'fecha_ingreso': pick(fechas.get('ingreso'), crudo.get('Fecha ingreso')),
+                'fecha_fin': pick(fechas.get('fin'), crudo.get('Fecha de fin')),
+                'sueldo_bruto_pactado': pick(remu.get('sueldo_base'), crudo.get('Sueldo bruto pactado')),
+                'adicionales': pick(remu.get('adicionables'), crudo.get('Adicionales')),
+                # Horario: texto crudo (o texto_original si está disponible), y resumen solo si no es modo "crudo"
+                'horario_texto': (
+                    crudo.get('Horario completo') if modo_resumen == "crudo"
+                    else (hor.get('texto_original') or crudo.get('Horario completo'))
+                ),
+                'horario_resumen': None if modo_resumen == "crudo" else hor.get('resumen'),
+            }
+            # ----------- Fin resumen enriquecido -----------
+
             try:
                 logger.debug(f"Procesando legajo {i}/{stats['total_legajos']} (ID: {legajo_id})")
 
@@ -364,20 +417,29 @@ def procesar_archivo_json(ruta_archivo: str) -> Tuple[Optional[List[Tuple[int, i
                 stats['variables_calculadas'] += len(variables_legajo)
 
                 if i % 10 == 0:
-                    logger.info(f"📊 Progreso: {i}/{stats['total_legajos']} legajos | "
-                                f"Éxitos: {stats['legajos_procesados']} | Errores: {stats['legajos_con_error']}")
+                    logger.info(
+                        f"📊 Progreso: {i}/{stats['total_legajos']} | "
+                        f"Éxitos: {stats['legajos_procesados']} | Errores: {stats['legajos_con_error']}"
+                    )
 
             except Exception as e:
                 stats['legajos_con_error'] += 1
                 stats['errores_por_tipo'][type(e).__name__] += 1
                 logger.error(f"⚠ Error procesando legajo {legajo_id}: {str(e)}")
-                logger.debug(f"Datos legajo problemático: {json.dumps(legajo, indent=2)[:300]}...")
+                try:
+                    logger.debug(f"Datos legajo problemático: {json.dumps(legajo, ensure_ascii=False)[:500]}...")
+                except Exception:
+                    pass  # por si el legajo no es serializable
 
+        # Resultados finales
         if resultados:
-            resultados_ordenados = sorted(resultados, key=lambda x: (x[0], x[1]))
+            # legajo_id puede ser str/int: normalizamos el sort por str para evitar TypeError
+            resultados_ordenados = sorted(resultados, key=lambda x: (str(x[0]), x[1]))
             logger.info(
-                f"✅ Proceso completado:\n- Legajos procesados: {stats['legajos_procesados']}/{stats['total_legajos']}\n"
-                f"- Variables calculadas: {stats['variables_calculadas']}\n- Errores: {stats['legajos_con_error']}\n"
+                f"✅ Proceso completado:\n"
+                f"- Legajos procesados: {stats['legajos_procesados']}/{stats['total_legajos']}\n"
+                f"- Variables calculadas: {stats['variables_calculadas']}\n"
+                f"- Errores: {stats['legajos_con_error']}\n"
                 f"- Tipos de errores: {dict(stats['errores_por_tipo'])}"
             )
             return resultados_ordenados, stats, resumen_horarios
