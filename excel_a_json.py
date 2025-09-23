@@ -51,19 +51,19 @@ EQUIVALENCIAS_EXTRA = {
     "l a j": "lunes-jueves",
     "la j": "lunes-jueves",
     
-    # CORREGIDO: Mantener el número "3" en la conversión
-    "3s": "y sábados 3 8-12",
-    "2s": "y sábados 2 8-12", 
-    "1s": "y sábados 1 8-12",
-    "3sab": "y sábados 3 8-12",
-    "2sab": "y sábados 2 8-12",
-    "1sab": "y sábados 1 8-12",
-    "3sáb": "y sábados 3 8-12",
-    "2sáb": "y sábados 2 8-12", 
-    "1sáb": "y sábados 1 8-12",
-    "3 s": "y sábados 3 8-12",
-    "2 s": "y sábados 2 8-12",
-    "1 s": "y sábados 1 8-12",
+    # CORREGIDO: Solo convertir "3S" a "y sábados 3" sin duplicar horarios
+    "3s": "y sábados 3",
+    "2s": "y sábados 2", 
+    "1s": "y sábados 1",
+    "3sab": "y sábados 3",
+    "2sab": "y sábados 2",
+    "1sab": "y sábados 1",
+    "3sáb": "y sábados 3",
+    "2sáb": "y sábados 2", 
+    "1sáb": "y sábados 1",
+    "3 s": "y sábados 3",
+    "2 s": "y sábados 2",
+    "1 s": "y sábados 1",
 }
 
 # después de definir EQUIVALENCIAS original:
