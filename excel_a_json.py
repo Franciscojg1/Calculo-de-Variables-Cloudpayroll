@@ -74,9 +74,9 @@ CATEGORIA_MAP = {
     r'^BQ\s*(?:\(DC\))?$': 'dc_bq', 
     r'^PFC\s*(?:\(FC\))?$': 'fc_pfc',
 
-    # Nuevas categorías añadidas
+    # Nuevas categorías añadidas con el punto escapado
     r'^Admin\.\s*de\s*1°$': 'dc_1_adm',
-    r'^Admin\.\s*de\s*2°$': 'dc_2_adm', # Asumo que Admin. de 2° corresponde a una nueva categoría
+    r'^Admin\.\s*de\s*2°$': 'dc_2_adm',
     r'^Admin\.\s*de\s*3°$': 'dc_3_adm',
     r'^TERCERA\s*CATEGORIA$': 'dc_3_categoria',
     r'^PRIMERA\s*CATEGORIA$': 'dc_1_categoria',
