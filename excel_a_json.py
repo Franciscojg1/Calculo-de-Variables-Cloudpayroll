@@ -471,6 +471,12 @@ def parse_schedule_string(schedule_str):
         return []
     s_cleaned = clean_and_standardize(schedule_str)
     s_std = apply_equivalences(s_cleaned, EQUIVALENCIAS)
+    
+    # DEBUG: Ver qué está pasando con el texto
+    logger.debug(f"DEBUG parse_schedule_string - Original: {schedule_str}")
+    logger.debug(f"DEBUG parse_schedule_string - Limpiado: {s_cleaned}") 
+    logger.debug(f"DEBUG parse_schedule_string - Con equivalencias: {s_std}")
+    
     pattern = re.compile(
         r"((?:[a-záéíóúñ\-]+(?:\s+y\s+|\s+)?)+?)"
         r"(?:\s+de)?\s+"
@@ -479,6 +485,9 @@ def parse_schedule_string(schedule_str):
         r"(\d{1,2}(?:[:.]?\d{2})?)"
         , re.IGNORECASE)
     matches = list(pattern.finditer(s_std))
+    
+    logger.debug(f"DEBUG - Encontrados {len(matches)} matches")
+    
     if not matches:
         return []
     normalized_blocks = []
@@ -492,8 +501,14 @@ def parse_schedule_string(schedule_str):
         day_words = re.split(r'\s+y\s+|\s+', day_phrase)
         day_words = [word for word in day_words if word]
         
+        logger.debug(f"DEBUG - day_phrase: '{day_phrase}'")
+        logger.debug(f"DEBUG - day_words: {day_words}")
+        
         # OBTENER DIAS Y DATA PROPORCIONAL (MODIFICADO)
         current_dias, proportional_data = get_day_indices(day_words)
+        
+        logger.debug(f"DEBUG - current_dias: {current_dias}")
+        logger.debug(f"DEBUG - proportional_data: {proportional_data}")
         
         # CONFIGURAR PERIODICIDAD (MODIFICADO)
         if proportional_data and 5 in proportional_data:  # Si es sábado proporcional
@@ -503,11 +518,14 @@ def parse_schedule_string(schedule_str):
                 "frecuencia": f"{proporcional_num}/4",
                 "factor": proporcional_num / 4.0
             }
+            logger.debug(f"DEBUG - Periodicidad PROPORCIONAL detectada: {proporcional_num}/4")
         elif "por" in day_words and "medio" in day_words:
             periodicity = {"tipo": "quincenal", "frecuencia": 2, "factor": 0.5}
             day_words = [w for w in day_words if w not in ["por", "medio"]]
+            logger.debug(f"DEBUG - Periodicidad QUINCENAL detectada")
         else:
             periodicity = {"tipo": "semanal", "frecuencia": 1, "factor": 1.0}
+            logger.debug(f"DEBUG - Periodicidad SEMANAL por defecto")
         
         start_time = format_time_to_hhmm(time_start_str)
         end_time = format_time_to_hhmm(time_end_str)
@@ -524,7 +542,11 @@ def parse_schedule_string(schedule_str):
         }
         if start_time > end_time:
             block_data["cruza_dia"] = True
+        
+        logger.debug(f"DEBUG - Bloque creado: {block_data}")
         normalized_blocks.append(block_data)
+    
+    logger.debug(f"DEBUG - Total bloques normalizados: {len(normalized_blocks)}")
     return normalized_blocks
 
 def calcular_resumen_horario(bloques, nombre_sede=None):
