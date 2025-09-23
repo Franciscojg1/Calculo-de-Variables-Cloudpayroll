@@ -506,16 +506,13 @@ def parse_schedule_string(schedule_str):
     logger.debug(f"DEBUG parse_schedule_string - Original: {schedule_str}")
     logger.debug(f"DEBUG parse_schedule_string - Con equivalencias: {s_std}")
     
-    # REGEX MEJORADO - más flexible y robusto
     pattern = re.compile(
-        r"(\b(?:[a-záéíóúñ]+(?:\s+(?:a|y|\+)\s*[a-záéíóúñ]*)*\s*(?:\d+\s*)*)+\b)"  # Días flexibles
-        r"(?:\s+(?:de|proporcional))?\s*"  # Palabras opcionales
-        r"(\d{1,2}(?:[:.]?\d{2})?)"        # Hora inicio
-        r"\s*(?:a|-|a\s+las?)\s*"          # Separador
-        r"(\d{1,2}(?:[:.]?\d{2})?)"        # Hora fin
-        r"(?:\s*(?:hs|horas?))?",          # Sufijo opcional
-        re.IGNORECASE
-    )
+    r"((?:[a-záéíóúñ\-]+(?:\s+y\s+|\s+)?)+?)"
+    r"(?:\s+de)?\s+"
+    r"(\d{1,2}(?:[:.]?\d{2})?)"
+    r"\s*(?:a|-)\s*"
+    r"(\d{1,2}(?:[:.]?\d{2})?)"
+    , re.IGNORECASE)
     
     # Buscar todos los bloques horarios
     matches = list(pattern.finditer(s_std))
