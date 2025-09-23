@@ -63,11 +63,24 @@ MODALIDAD_MAP = {
     'PLAZO FIJO': 'tiempo_completo_plazo_fijo', 'JORNADA PARCIAL': 'tiempo_parcial_indefinido'
 }
 CATEGORIA_MAP = {
-    r'^1°\s*ADM\s*(?:\(DC\))?$': 'dc_1_adm', r'^1°\s*CATEGOR[ÍI]A\s*(?:\(DC\))?$': 'dc_1_categoria',
-    r'^2°\s*CATEGOR[ÍI]A\s*(?:\(DC\))?$': 'dc_2_categoria', r'^3°\s*ADM\s*(?:\(DC\))?$': 'dc_3_adm',
-    r'^3°\s*CATEGOR[ÍI]A\s*(?:\(DC\))?$': 'dc_3_categoria', r'^4°\s*CATEGOR[ÍI]A\s*(?:\(DC\))?$': 'dc_4_categoria',
+    # Categorías originales
+    r'^1°\s*ADM\s*(?:\(DC\))?$': 'dc_1_adm', 
+    r'^1°\s*CATEGOR[ÍI]A\s*(?:\(DC\))?$': 'dc_1_categoria',
+    r'^2°\s*CATEGOR[ÍI]A\s*(?:\(DC\))?$': 'dc_2_categoria', 
+    r'^3°\s*ADM\s*(?:\(DC\))?$': 'dc_3_adm',
+    r'^3°\s*CATEGOR[ÍI]A\s*(?:\(DC\))?$': 'dc_3_categoria', 
+    r'^4°\s*CATEGOR[ÍI]A\s*(?:\(DC\))?$': 'dc_4_categoria',
     r'^5°\s*CATEGOR[ÍI]A\s*(?:\(DC\))?$': 'dc_5_categoria',
-    r'^BQ\s*(?:\(DC\))?$': 'dc_bq', r'^PFC\s*(?:\(FC\))?$': 'fc_pfc',
+    r'^BQ\s*(?:\(DC\))?$': 'dc_bq', 
+    r'^PFC\s*(?:\(FC\))?$': 'fc_pfc',
+
+    # Nuevas categorías añadidas
+    r'^Admin\.\s*de\s*1°$': 'dc_1_adm',
+    r'^Admin\.\s*de\s*2°$': 'dc_2_adm', # Asumo que Admin. de 2° corresponde a una nueva categoría
+    r'^Admin\.\s*de\s*3°$': 'dc_3_adm',
+    r'^TERCERA\s*CATEGORIA$': 'dc_3_categoria',
+    r'^PRIMERA\s*CATEGORIA$': 'dc_1_categoria',
+    r'^BECARIOS$': 'becarios',
 }
 TURNOS_NOCTURNOS_COMPLETOS = [('19:00', '07:00'), ('22:00', '06:00'), ('21:00', '07:00'), ('18:00', '07:00')]
 
@@ -629,8 +642,8 @@ def procesar_excel_a_json(df, output_json_path="horarios.json"):
                         "Sede": safe_str_get(row, 'Sede'),
                         "Categoría": row.get('Categoría'),
                         "Modalidad contratación": row.get('Modalidad contratación'),
-                        "Fecha ingreso": row.get('Fecha ingreso'),
-                        "Fecha de fin": row.get('Fecha de fin'),
+                        "Fecha ingreso": parsear_fecha(row.get('Fecha ingreso')),
+                        "Fecha de fin": parsear_fecha(row.get('Fecha de fin')),
                         "Sueldo bruto pactado": row.get('Sueldo bruto pactado'),
                         "Adicionales": safe_str_get(row, 'Adicionales'),
                         "Horario completo": horario_original
