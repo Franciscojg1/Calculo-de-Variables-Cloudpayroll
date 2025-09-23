@@ -549,9 +549,15 @@ def parse_schedule_string(schedule_str):
             logger.debug(f"DEBUG - Procesando bloque {block_counter}: '{original_segment}'")
             logger.debug(f"DEBUG - day_phrase: '{day_phrase}'")
             
-            # EXTRACCIÓN MEJORADA de palabras de días
-            # Extraer palabras y números, ignorando conectores comunes
-            day_words = re.findall(r'[a-záéíóúñ]+|\d+', day_phrase.lower())
+            # EXTRACCIÓN DE PALABRAS - CORREGIDA (MANTENER RANGOS CON GUION)
+            if '-' in day_phrase:
+                # Si tiene guión, mantenerlo como una sola palabra para procesar el rango
+                day_words = [day_phrase.lower()]
+                logger.debug(f"DEBUG - Manteniendo rango con guión: '{day_phrase}'")
+            else:
+                # Si no tiene guión, dividir normalmente
+                day_words = re.findall(r'[a-záéíóúñ]+|\d+', day_phrase.lower())
+                
             day_words = [word for word in day_words if word and word not in ['y', 'de', 'proporcional']]
             
             logger.debug(f"DEBUG - day_words procesados: {day_words}")
