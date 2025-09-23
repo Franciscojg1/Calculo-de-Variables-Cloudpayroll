@@ -42,28 +42,28 @@ EQUIVALENCIAS = {
 }
 
 EQUIVALENCIAS_EXTRA = {
-    "lav": "lunes-viernes",      # LaV → lunes-viernes
-    "la v": "lunes-viernes",     # La V → lunes-viernes
-    "l a v": "lunes-viernes",    # L a V → lunes-viernes
-    "l-v": "lunes-viernes",      # L-V → lunes-viernes
-    "l/v": "lunes-viernes",      # L/V → lunes-viernes
-    "l v": "lunes-viernes",      # L V → lunes-viernes
-    "l a j": "lunes-jueves",     # L a J → lunes-jueves
-    "la j": "lunes-jueves",      # La J → lunes-jueves
+    "lav": "lunes-viernes",
+    "la v": "lunes-viernes", 
+    "l a v": "lunes-viernes",
+    "l-v": "lunes-viernes",
+    "l/v": "lunes-viernes",
+    "l v": "lunes-viernes",
+    "l a j": "lunes-jueves",
+    "la j": "lunes-jueves",
     
-    # SÁBADOS PROPORCIONALES - FORMATO MÁS SIMPLE QUE FUNCIONE CON EL REGEX
-    "3s": "y sábados 8-12",           # 3S → y sábados 8-12 + lógica proporcional
-    "2s": "y sábados 8-12",           # 2S → y sábados 8-12 + lógica proporcional  
-    "1s": "y sábados 8-12",           # 1S → y sábados 8-12 + lógica proporcional
-    "3sab": "y sábados 8-12",
-    "2sab": "y sábados 8-12", 
-    "1sab": "y sábados 8-12",
-    "3sáb": "y sábados 8-12",
-    "2sáb": "y sábados 8-12",
-    "1sáb": "y sábados 8-12",
-    "3 s": "y sábados 8-12",
-    "2 s": "y sábados 8-12",
-    "1 s": "y sábados 8-12",
+    # CORREGIDO: Mantener el número "3" en la conversión
+    "3s": "y sábados 3 8-12",
+    "2s": "y sábados 2 8-12", 
+    "1s": "y sábados 1 8-12",
+    "3sab": "y sábados 3 8-12",
+    "2sab": "y sábados 2 8-12",
+    "1sab": "y sábados 1 8-12",
+    "3sáb": "y sábados 3 8-12",
+    "2sáb": "y sábados 2 8-12", 
+    "1sáb": "y sábados 1 8-12",
+    "3 s": "y sábados 3 8-12",
+    "2 s": "y sábados 2 8-12",
+    "1 s": "y sábados 1 8-12",
 }
 
 # después de definir EQUIVALENCIAS original:
