@@ -500,16 +500,16 @@ def parse_schedule_string(schedule_str):
     
     logger.debug(f"DEBUG - Encontrados {len(matches)} matches")
     
-    # DETECCIÓN MANUAL DE MÚLTIPLES BLOQUES SIN CONECTOR (NUEVO)
-    if len(matches) == 1 and ("sábado proporcional" in s_std or "sabado proporcional" in s_std):
-        logger.debug("DEBUG - Intentando división manual por 'sábado proporcional'")
+    # DETECCIÓN MANUAL DE MÚLTIPLES BLOQUES SIN CONECTOR (MODIFICADO)
+    if len(matches) == 1 and (" y sábados" in s_std or " y sabados" in s_std):
+        logger.debug("DEBUG - Intentando división manual por 'y sábados'")
         
-        # Buscar el punto donde empieza el segundo bloque
+        # Buscar el punto donde empieza el segundo bloque ("y sábados")
         texto = s_std
         segundo_bloque_start = None
         
-        # Buscar "sábado proporcional" o "sabado proporcional"
-        for patron in ["sábado proporcional", "sabado proporcional"]:
+        # Buscar " y sábados" o " y sabados"
+        for patron in [" y sábados", " y sabados"]:
             if patron in texto:
                 segundo_bloque_start = texto.find(patron)
                 break
