@@ -200,29 +200,21 @@ def get_day_indices(day_words):
     while i < len(day_words):
         word = day_words[i].strip().lower()
         
-        # 1. DETECCIÓN DE SÁBADOS PROPORCIONALES (MEJORADA)
-        if word in ["sábados", "sabados", "sábado", "sabado"] and i < len(day_words) - 1:
+        # --- INICIO DE LA CORRECCIÓN ---
+        # 1. DETECCIÓN DE SÁBADOS PROPORCIONALES (LÓGICA MEJORADA Y MÁS ESTRICTA)
+        # La condición ahora es más específica: solo entra si es "sábado" Y la siguiente palabra es un número.
+        if word in ["sábados", "sabados", "sábado", "sabado"] and i < len(day_words) - 1 and day_words[i+1].strip().isdigit():
             next_word = day_words[i+1].strip()
+            proporcional_num = int(next_word)
             
-            # Caso 1A: "sábados 3" (número directo)
-            if next_word.isdigit() and 1 <= int(next_word) <= 4:
-                proporcional_num = int(next_word)
+            if 1 <= proporcional_num <= 4:
                 proportional_data[5] = proporcional_num
                 day_indices.add(5)
                 i += 2  # Saltamos "sábados" y el número
                 continue
-                
-            # Caso 1B: "sábado proporcional 3" 
-            elif i < len(day_words) - 2 and next_word == "proporcional":
-                tercer_word = day_words[i+2].strip()
-                if tercer_word.isdigit() and 1 <= int(tercer_word) <= 4:
-                    proporcional_num = int(tercer_word)
-                    proportional_data[5] = proporcional_num
-                    day_indices.add(5)
-                    i += 3  # Saltamos "sábado", "proporcional" y el número
-                    continue
-        
-        # 2. DETECCIÓN DE RANGOS CON "a" (MEJORADA)
+        # --- FIN DE LA CORRECCIÓN ---
+
+        # 2. DETECCIÓN DE RANGOS CON "a" (sin cambios)
         elif word == "a" and i > 0 and i < len(day_words) - 1:
             start_day_str = day_words[i-1].strip().lower()
             end_day_str = day_words[i+1].strip().lower()
@@ -230,18 +222,16 @@ def get_day_indices(day_words):
             end_idx = DAY_MAP.get(end_day_str)
             
             if start_idx is not None and end_idx is not None:
-                # Asegurar que el rango va de menor a mayor
                 start_idx, end_idx = sorted([start_idx, end_idx])
                 for j in range(start_idx, end_idx + 1):
                     day_indices.add(j)
                 i += 2  # Saltamos "a" y el día final
                 continue
             else:
-                # Si no es un rango válido, tratar "a" como palabra normal
                 i += 1
                 continue
         
-        # 3. PROCESAMIENTO DE RANGOS CON GUION (CORREGIDO)
+        # 3. PROCESAMIENTO DE RANGOS CON GUION (sin cambios)
         elif '-' in word:
             parts = word.split('-')
             if len(parts) == 2:
@@ -251,25 +241,22 @@ def get_day_indices(day_words):
                 end_idx = DAY_MAP.get(end_day_str)
                 
                 if start_idx is not None and end_idx is not None:
-                    # CORRECCIÓN: EXPANDIR CORRECTAMENTE EL RANGO
                     start_idx, end_idx = sorted([start_idx, end_idx])
                     for j in range(start_idx, end_idx + 1):
                         day_indices.add(j)
                     logger.debug(f"DEBUG get_day_indices - Rango expandido: {start_day_str}-{end_day_str} -> {list(range(start_idx, end_idx + 1))}")
                 else:
-                    # Si no es un rango válido, tratar los días por separado
                     for part in parts:
                         idx = DAY_MAP.get(part.strip().lower())
                         if isinstance(idx, int):
                             day_indices.add(idx)
         
-        # 4. PROCESAMIENTO DE DÍAS INDIVIDUALES (MEJORADA)
+        # 4. PROCESAMIENTO DE DÍAS INDIVIDUALES (ahora funciona para "sábado por medio")
         else:
             idx = DAY_MAP.get(word)
             if isinstance(idx, int):
                 day_indices.add(idx)
             elif isinstance(idx, str):
-                # Expansión de equivalencias como "safe", "dofe", etc.
                 expanded_words = idx.split()
                 for exp_word in expanded_words:
                     exp_idx = DAY_MAP.get(exp_word.strip())
@@ -278,7 +265,6 @@ def get_day_indices(day_words):
         
         i += 1
     
-    # Limpiar y ordenar resultados
     day_indices_clean = sorted([d for d in day_indices if isinstance(d, int) and 0 <= d <= 7])
     
     logger.debug(f"DEBUG get_day_indices - Entrada: {day_words}")
