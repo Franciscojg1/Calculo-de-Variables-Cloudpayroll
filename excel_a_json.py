@@ -50,6 +50,18 @@ EQUIVALENCIAS_EXTRA = {
     "l v": "lunes-viernes",      # L V → lunes-viernes
     "l a j": "lunes-jueves",     # L a J → lunes-jueves  ← ¡NUEVO!
     "la j": "lunes-jueves",      # La J → lunes-jueves   ← ¡NUEVO!
+    "3s": "sábado proporcional 3",
+    "2s": "sábado proporcional 2", 
+    "1s": "sábado proporcional 1",
+    "3sab": "sábado proporcional 3",
+    "2sab": "sábado proporcional 2",
+    "1sab": "sábado proporcional 1",
+    "3sáb": "sábado proporcional 3",
+    "2sáb": "sábado proporcional 2",
+    "1sáb": "sábado proporcional 1",
+    "3 s": "sábado proporcional 3",
+    "2 s": "sábado proporcional 2",
+    "1 s": "sábado proporcional 1",
 }
 
 # después de definir EQUIVALENCIAS original:
@@ -176,14 +188,32 @@ def format_time_to_hhmm(time_str):
 
 def get_day_indices(day_words):
     day_indices = set()
+    proportional_data = {}  # Para almacenar info de periodicidad proporcional
     
-    # Primero: detectar patrones con "a" como conector (ej: "lunes", "a", "jueves")
     i = 0
     while i < len(day_words):
         word = day_words[i]
         
-        # Si encontramos "a" como conector entre dos días
-        if word == "a" and i > 0 and i < len(day_words) - 1:
+        # Detectar "sábado proporcional X" (nuevo caso)
+        if word == "sábado" and i < len(day_words) - 2:
+            if day_words[i+1] == "proporcional" and day_words[i+2].isdigit():
+                proporcional_num = int(day_words[i+2])
+                proportional_data[5] = proporcional_num  # 5 = sábado
+                day_indices.add(5)
+                i += 3  # Saltamos "sábado proporcional X"
+                continue
+        
+        # Detectar "sabado proporcional X" (alternativa sin acento)
+        elif word == "sabado" and i < len(day_words) - 2:
+            if day_words[i+1] == "proporcional" and day_words[i+2].isdigit():
+                proporcional_num = int(day_words[i+2])
+                proportional_data[5] = proporcional_num  # 5 = sábado
+                day_indices.add(5)
+                i += 3  # Saltamos "sabado proporcional X"
+                continue
+        
+        # Si encontramos "a" como conector entre dos días (caso existente)
+        elif word == "a" and i > 0 and i < len(day_words) - 1:
             start_day_str = day_words[i-1]
             end_day_str = day_words[i+1]
             start_idx = DAY_MAP.get(start_day_str.strip())
@@ -195,7 +225,7 @@ def get_day_indices(day_words):
                 i += 2  # Saltamos las palabras ya procesadas
                 continue
         
-        # Procesamiento normal de rangos con guión
+        # Procesamiento normal de rangos con guión (caso existente)
         elif '-' in word:
             parts = word.split('-')
             if len(parts) == 2:
@@ -206,7 +236,7 @@ def get_day_indices(day_words):
                     for j in range(start_idx, end_idx + 1):
                         day_indices.add(j)
         
-        # Procesamiento de días individuales
+        # Procesamiento de días individuales (caso existente)
         else:
             idx = DAY_MAP.get(word)
             if isinstance(idx, int):
@@ -220,7 +250,7 @@ def get_day_indices(day_words):
         
         i += 1
     
-    return sorted(list(day_indices))
+    return sorted(list(day_indices)), proportional_data
 
 def generate_block_id(days, start_time, end_time, periodicity, counter):
     day_names = '_'.join([DAY_NAMES.get(d, str(d)) for d in days])
@@ -461,11 +491,24 @@ def parse_schedule_string(schedule_str):
         original_segment = match.group(0).strip()
         day_words = re.split(r'\s+y\s+|\s+', day_phrase)
         day_words = [word for word in day_words if word]
-        periodicity = {"tipo": "semanal", "frecuencia": 1}
-        if "por" in day_words and "medio" in day_words:
-            periodicity = {"tipo": "quincenal", "frecuencia": 2}
+        
+        # OBTENER DIAS Y DATA PROPORCIONAL (MODIFICADO)
+        current_dias, proportional_data = get_day_indices(day_words)
+        
+        # CONFIGURAR PERIODICIDAD (MODIFICADO)
+        if proportional_data and 5 in proportional_data:  # Si es sábado proporcional
+            proporcional_num = proportional_data[5]
+            periodicity = {
+                "tipo": "proporcional", 
+                "frecuencia": f"{proporcional_num}/4",
+                "factor": proporcional_num / 4.0
+            }
+        elif "por" in day_words and "medio" in day_words:
+            periodicity = {"tipo": "quincenal", "frecuencia": 2, "factor": 0.5}
             day_words = [w for w in day_words if w not in ["por", "medio"]]
-        current_dias = get_day_indices(day_words)
+        else:
+            periodicity = {"tipo": "semanal", "frecuencia": 1, "factor": 1.0}
+        
         start_time = format_time_to_hhmm(time_start_str)
         end_time = format_time_to_hhmm(time_end_str)
         if not current_dias:
@@ -533,19 +576,24 @@ def calcular_resumen_horario(bloques, nombre_sede=None):
                 tiene_nocturnidad = True
             # --- FIN DE LÓGICA AGREGADA ---
             
-            factor = 1.0 if bloque['periodicidad']['tipo'] == 'semanal' else 0.5
+            # CALCULAR FACTOR (MODIFICADO)
+            factor = bloque['periodicidad'].get('factor', 
+                0.5 if bloque['periodicidad']['tipo'] == 'quincenal' else 1.0)
+            
             dias = set(bloque['dias_semana'])
             cantidad_dias = len(dias)
             
             for dia in dias:
                 dias_trabajo.add(dia)
+                # CALCULAR HORAS SEMANALES CON FACTOR (MODIFICADO)
+                horas_semanales_bloque = round(duracion_total * factor, 2)
                 bloques_por_dia[dia].append({
                     'inicio': bloque['hora_inicio'],
                     'fin': bloque['hora_fin'],
                     'duracion_total': round(duracion_total, 2),
                     'horas_nocturnas': round(horas_noct, 2),
                     'periodicidad': bloque['periodicidad']['tipo'],
-                    'horas_semanales': round(duracion_total * factor, 2),
+                    'horas_semanales': horas_semanales_bloque,
                 })
             
             total_horas += duracion_total * cantidad_dias * factor
@@ -554,7 +602,8 @@ def calcular_resumen_horario(bloques, nombre_sede=None):
         except Exception as e:
             continue
             
-    # ... (código final) ...
+    # Limpiar días sin bloques
+    bloques_por_dia = {k: v for k, v in bloques_por_dia.items() if v}
     
     resultado = {
         'total_horas_semanales': round(total_horas, 2),
@@ -564,17 +613,17 @@ def calcular_resumen_horario(bloques, nombre_sede=None):
         'detalle_nocturnidad': {
             'horario_nocturno': '22:00-06:00',
             'total_horas': round(total_horas_nocturnas, 2),
-            'por_dia': {dia: sum(b['horas_nocturnas'] for b in bloques_por_dia[dia]) for dia in sorted(dias_trabajo)}
+            'por_dia': {dia: round(sum(b['horas_nocturnas'] for b in bloques_por_dia[dia]), 2) 
+                       for dia in sorted(dias_trabajo) if dia in bloques_por_dia}
         },
         'tiene_fin_semana': any(dia in {5, 6} for dia in dias_trabajo),
-        'bloques_por_dia': {dia: bloques_por_dia[dia] for dia in sorted(dias_trabajo)}
+        'bloques_por_dia': {dia: bloques_por_dia[dia] for dia in sorted(dias_trabajo) if dia in bloques_por_dia}
     }
 
     if nombre_sede is not None:
         resultado['sede'] = nombre_sede.strip().upper()
 
     return resultado
-
 # =============== FUNCIÓN PRINCIPAL ===============
 
 def procesar_excel_a_json(df, output_json_path="horarios.json"):
