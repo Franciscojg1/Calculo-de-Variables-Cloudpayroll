@@ -868,12 +868,7 @@ def obtener_horas_semanales(legajo: Dict[str, Any]) -> float:
 def calcular_dias_mensuales(legajo: Dict[str, Any]) -> int:
     """
     Calcula días mensuales ajustando correctamente días con periodicidad quincenal o parcial.
-
-    Args:
-        legajo: Diccionario con todos los datos del legajo
-
-    Returns:
-        int: Días mensuales trabajados (con redondeo estándar)
+    Ahora maneja periodicidad PROPORCIONAL.
     """
     id_legajo = legajo.get("id_legajo", "DESCONOCIDO")
 
@@ -893,13 +888,45 @@ def calcular_dias_mensuales(legajo: Dict[str, Any]) -> int:
             for bloque in bloques:
                 if not isinstance(bloque, dict):
                     continue
+                    
                 periodicidad = str(bloque.get("periodicidad", "")).lower()
+                
                 if periodicidad == "semanal":
                     dias_semanales += 1.0
-                    break  # Un solo bloque semanal basta para contar el día completo
+                    break
                 elif periodicidad == "quincenal":
                     dias_semanales += 0.5
-                    break  # Un solo bloque quincenal suma medio día
+                    break
+                elif periodicidad == "proporcional":
+                    # CALCULAR FACTOR PROPORCIONAL
+                    horas_semanales = bloque.get("horas_semanales", 0)
+                    duracion_total = bloque.get("duracion_total", 1)
+                    
+                    if duracion_total > 0 and horas_semanales > 0:
+                        factor = horas_semanales / duracion_total
+                    else:
+                        # Fallback: intentar extraer de frecuencia "3/4"
+                        periodicidad_obj = bloque.get("periodicidad", {})
+                        if isinstance(periodicidad_obj, dict) and "frecuencia" in periodicidad_obj:
+                            freq_str = str(periodicidad_obj["frecuencia"])
+                            if "/" in freq_str:
+                                try:
+                                    num, den = freq_str.split("/")
+                                    factor = float(num) / float(den)
+                                except:
+                                    factor = 0.75  # Default
+                            else:
+                                factor = 0.75  # Default
+                        else:
+                            factor = 0.75  # Default
+                    
+                    dias_semanales += factor
+                    logger.debug(f"Legajo {id_legajo}: Día {dia_str} proporcional → factor {factor}")
+                    break
+            else:
+                # Si no se encontró periodicidad reconocida, contar como semanal
+                dias_semanales += 1.0
+                logger.debug(f"Legajo {id_legajo}: Día {dia_str} sin periodicidad reconocida → contado como 1.0")
 
         dias_mensuales = dias_semanales * 4.33
         parte_entera = int(dias_mensuales)
@@ -907,7 +934,7 @@ def calcular_dias_mensuales(legajo: Dict[str, Any]) -> int:
         dias_mensuales_redondeados = parte_entera + 1 if parte_decimal >= 0.5 else parte_entera
 
         logger.info(
-            f"Legajo {id_legajo}: Días semanales efectivos = {dias_semanales}, "
+            f"Legajo {id_legajo}: Días semanales efectivos = {dias_semanales:.2f}, "
             f"mensuales estimados = {dias_mensuales:.2f}, redondeado = {dias_mensuales_redondeados}"
         )
 
@@ -1375,18 +1402,26 @@ def calcular_horas_mensuales(legajo: Dict[str, Any], v239: float) -> float:
         else:
             logger.debug(f"DEBUG: Legajo {id_legajo}: No cumple caso 200hs. Condición evaluada: {(sector == 'cuat' and puesto == PUESTOS_ESPECIALES['TELEFONISTA'] and v239 == 35)} || {(puesto == PUESTOS_ESPECIALES['RECEP_LAB'] and v239 == 35)} || {(puesto == PUESTOS_ESPECIALES['TEC_CARDIO'] and v239 >= 35)} || {(puesto == PUESTOS_ESPECIALES['OP_LOGISTICA'] and v239 >= 35)}")
 
-        # 3. Casos de 156 hs por puesto y rango horario
-        puestos_156 = [normalizar_texto(p) for p in [
+        # 3. Casos de puestos con piso 27 horas (bioquímicos, técnicos, etc.)
+        puestos_piso_27 = [normalizar_texto(p) for p in [
             "AUXILIAR TECNICO", "TECNICO DE LABORATORIO",
             "TECNICO EXTRACCIONISTA", "BIOQUIMICO"
         ]]
-        if puesto in puestos_156 and 27 <= v239 <= 36:
-            logger.info(f"Legajo {id_legajo}: Puesto 156 reconocido, v239={v239}")
-            return 156.00
-        else:
-            logger.debug(f"DEBUG: Legajo {id_legajo}: No cumple primer caso 156hs. Puesto '{puesto}' en {puestos_156}: {puesto in puestos_156}. v239={v239}, en rango 27-36: {27 <= v239 <= 36}")
 
-        # Aquí, normalizamos "TECNICO" y "TECNICO PIVOT" al vuelo para la comparación
+        if puesto in puestos_piso_27:
+            if 27 <= v239 <= 36:  # ✅ Rango exacto 27-36 → 156 horas
+                logger.info(f"Legajo {id_legajo}: Puesto con piso 27 reconocido, v239={v239} entre 27-36 → 156 horas")
+                return 156.00
+            elif v239 < 27:  # ✅ Menos de 27 → proporcional 27 × 4.33
+                horas_proporcionales = round(27 * 4.33, 2)
+                logger.info(f"Legajo {id_legajo}: Puesto con piso 27, v239={v239} < 27 → proporcional {horas_proporcionales}")
+                return horas_proporcionales
+            else:  # ✅ Más de 36 → continúa al siguiente caso
+                logger.debug(f"DEBUG: Legajo {id_legajo}: Puesto con piso 27, pero v239={v239} > 36, continúa evaluación")
+        else:
+            logger.debug(f"DEBUG: Legajo {id_legajo}: No es puesto con piso 27. Puesto '{puesto}' en {puestos_piso_27}: {puesto in puestos_piso_27}")
+
+        # 4. Casos de puestos técnicos con piso 18 horas
         if (
             puesto in [normalizar_texto("TECNICO"), normalizar_texto("TECNICO PIVOT")]
             and sector != SECTOR_EXCLUIDO_LABORATORIO
@@ -1395,30 +1430,29 @@ def calcular_horas_mensuales(legajo: Dict[str, Any], v239: float) -> float:
             logger.info(f"Legajo {id_legajo}: Puesto técnico 156 válido, v239={v239}")
             return 156.00
         else:
-            logger.debug(f"DEBUG: Legajo {id_legajo}: No cumple segundo caso 156hs. Puesto '{puesto}' en tecnicos: {puesto in [normalizar_texto('TECNICO'), normalizar_texto('TECNICO PIVOT')]}. Sector '{sector}' != '{SECTOR_EXCLUIDO_LABORATORIO}': {sector != SECTOR_EXCLUIDO_LABORATORIO}. v239={v239}, en rango 18-36: {18 <= v239 <= 36}")
+            logger.debug(f"DEBUG: Legajo {id_legajo}: No cumple caso técnicos 156hs. Puesto '{puesto}' en tecnicos: {puesto in [normalizar_texto('TECNICO'), normalizar_texto('TECNICO PIVOT')]}. Sector '{sector}' != '{SECTOR_EXCLUIDO_LABORATORIO}': {sector != SECTOR_EXCLUIDO_LABORATORIO}. v239={v239}, en rango 18-36: {18 <= v239 <= 36}")
 
-        # 4. Caso médicos (pago proporcional directo)
-
-        logger.debug(f"DEBUG: Legajo {id_legajo}: Evaluando Sección 4. Puesto='{puesto}'. Valores de comparación (re-normalizados al vuelo): {valores_profesionales_para_comparacion}. ¿Puesto está en valores?: {puesto in valores_profesionales_para_comparacion}")
+        # 5. Caso médicos (pago proporcional directo)
+        logger.debug(f"DEBUG: Legajo {id_legajo}: Evaluando Sección 5. Puesto='{puesto}'. Valores de comparación (re-normalizados al vuelo): {valores_profesionales_para_comparacion}. ¿Puesto está en valores?: {puesto in valores_profesionales_para_comparacion}")
         if puesto in valores_profesionales_para_comparacion:
             logger.info(f"Legajo {id_legajo}: Profesional de la salud, pago proporcional")
             return round(v239 * 4.33, 2)
         else:
-            logger.debug(f"DEBUG: Legajo {id_legajo}: NO cumple condición de profesional de la salud en Sección 4.")
+            logger.debug(f"DEBUG: Legajo {id_legajo}: NO cumple condición de profesional de la salud en Sección 5.")
 
-        # 5. Caso general con pisos (nuevo criterio)
+        # 6. Caso general con pisos (nuevo criterio)
         piso = PISOS_HORARIOS.get(normalizar_texto("GENERAL"), 36.0)
         sector_normalizado = normalizar_texto(sector)
         puesto_normalizado = normalizar_texto(puesto)
 
-        # 5.1 Sector LABORATORIO con puesto válido
+        # 6.1 Sector LABORATORIO con puesto válido
         if (
             sector_normalizado == ConfigArt19.SECTOR_VALIDO
             and puesto_normalizado in ConfigArt19.PUESTOS_VALIDOS
         ):
             piso = PISOS_HORARIOS.get(normalizar_texto("LABORATORIO"), 27.0)
 
-        # 5.2 Sector IMÁGENES con puesto válido
+        # 6.2 Sector IMÁGENES con puesto válido
         elif (
             sector_normalizado in SECTORES_IMAGENES
             and puesto_normalizado in ConfigBioimagenes.PUESTOS_VALIDOS
@@ -1427,14 +1461,14 @@ def calcular_horas_mensuales(legajo: Dict[str, Any], v239: float) -> float:
 
         logger.debug(f"DEBUG: Legajo {id_legajo}: Piso final determinado: {piso}")
 
-        # 6. Si está por debajo del piso → proporcional
+        # 7. Si está por debajo del piso → proporcional
         if v239 < piso:
             logger.debug(f"Legajo {id_legajo}: Horas semanales {v239} debajo del piso {piso}, se liquida proporcional.")
             return round(piso * 4.33, 2)
         else:
             logger.debug(f"DEBUG: Legajo {id_legajo}: Horas semanales {v239} NO debajo del piso {piso}. Pasa al caso general.")
 
-        # 7. Caso general por defecto
+        # 8. Caso general por defecto
         logger.info(f"Legajo {id_legajo}: Sin coincidencias especiales → se asignan 200 hs mensuales.")
         return 200.00
 
@@ -1454,13 +1488,11 @@ def calcular_jornada_reducida(legajo: Dict[str, Any], es_guardia: bool) -> Optio
         puesto = normalizar_texto(datos_personales.get('puesto', ''))
         sector = normalizar_texto(datos_personales.get('sector', {}).get('principal', ''))
         total_horas = legajo.get('horario', {}).get('resumen', {}).get('total_horas_semanales', 0.0)
-        categoria = legajo.get('contratacion', {}).get('categoria', '')  # Mantenemos el valor original
+        categoria = legajo.get('contratacion', {}).get('categoria', '')
 
-        # --- NUEVO LOG DE DEPURACIÓN MEJORADO ---
         logger.debug(f"[1167] Legajo {id_legajo}: Categoría raw: '{categoria}'")
 
         # --- Validación mejorada de categorías FC/PFC ---
-        # Verificamos directamente las variantes conocidas sin normalizar
         if isinstance(categoria, str) and categoria.lower().replace(' ', '_') in {'pfc', 'fc_pfc'}:
             logger.debug(f"[1167] Legajo {id_legajo}: Excluido por categoría FC/PFC: '{categoria}'")
             return None
@@ -1491,13 +1523,28 @@ def calcular_jornada_reducida(legajo: Dict[str, Any], es_guardia: bool) -> Optio
             logger.info(f"[1167] Legajo {id_legajo}: APLICA (regla especial 18h en L/M/V → {resultado}%)")
             return resultado
         
-        # --- Asignación de piso horario según sector ---
-        if sector in SECTORES_IMAGENES:
+        # --- Asignación de piso horario según sector y puesto (CORREGIDO) ---
+        puestos_lab_piso_27 = [normalizar_texto(p) for p in [
+            "AUXILIAR TECNICO", "TECNICO DE LABORATORIO", 
+            "TECNICO EXTRACCIONISTA", "BIOQUIMICO"
+        ]]
+        logger.debug(f"[1167] Legajo {id_legajo}: DEBUG - Sector normalizado: '{sector}'")
+        logger.debug(f"[1167] Legajo {id_legajo}: DEBUG - Puesto normalizado: '{puesto}'")
+        logger.debug(f"[1167] Legajo {id_legajo}: DEBUG - Puestos lab piso 27: {puestos_lab_piso_27}")
+        logger.debug(f"[1167] Legajo {id_legajo}: DEBUG - ¿Sector es LABORATORIO? {sector == normalizar_texto('LABORATORIO')}")
+        logger.debug(f"[1167] Legajo {id_legajo}: DEBUG - ¿Puesto en lista? {puesto in puestos_lab_piso_27}")
+        # Si es sector LABORATORIO y puesto específico → piso 27
+        if sector == normalizar_texto('LABORATORIO') and puesto in puestos_lab_piso_27:
+            piso = 27.0
+            logger.debug(f"[1167] Legajo {id_legajo}: Sector LABORATORIO con puesto '{puesto}' → piso 27h")
+        elif sector in SECTORES_IMAGENES:
             piso = PISOS_HORARIOS.get(normalizar_texto('IMAGENES'), 36.0)
         elif sector == normalizar_texto('LABORATORIO'):
-            piso = PISOS_HORARIOS.get(normalizar_texto('LABORATORIO'), 36.0)
+            piso = PISOS_HORARIOS.get(normalizar_texto('LABORATORIO'), 27.0)  # Default 27 para lab
         else:
             piso = PISOS_HORARIOS.get(normalizar_texto('GENERAL'), 36.0)
+
+        logger.debug(f"[1167] Legajo {id_legajo}: Piso determinado: {piso}h")
 
         # --- Cálculo final del porcentaje ---
         if total_horas < piso:

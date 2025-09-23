@@ -494,29 +494,33 @@ def parse_schedule_string(schedule_str):
     if not schedule_str or not isinstance(schedule_str, str):
         return []
         
-    # Estas funciones deben estar definidas en tu código
     s_cleaned = clean_and_standardize(schedule_str)
     s_std = apply_equivalences(s_cleaned, EQUIVALENCIAS)
     
     logger.debug(f"DEBUG parse_schedule_string - Original: {schedule_str}")
     logger.debug(f"DEBUG parse_schedule_string - Con equivalencias: {s_std}")
     
+    # --- INICIO DE LA CORRECCIÓN ---
+    # Se eliminó el '?' del cuantificador ')+?)' para hacerlo "greedy" (codicioso).
+    # Ahora capturará la secuencia más larga posible de días, como "lunes y martes y miércoles".
     pattern = re.compile(
-        r"((?:[a-záéíóúñ\-]+(?:\s+y\s+|\s+)?)+?)"  # Grupo 1: Días
+        r"((?:[a-záéíóúñ\-]+(?:\s+y\s+|\s+)?)+)"  # Grupo 1: Días (AHORA ES GREEDY)
         r"(?:\s+de)?\s+"
         r"(\d{1,2}(?:[:.]?\d{2})?)"               # Grupo 2: Hora inicio
         r"\s*(?:a|-)\s*"
         r"(\d{1,2}(?:[:.]?\d{2})?)"               # Grupo 3: Hora fin
         , re.IGNORECASE)
+    # --- FIN DE LA CORRECCIÓN ---
     
-    # Buscar todos los bloques horarios
     matches = list(pattern.finditer(s_std))
     logger.debug(f"DEBUG - Encontrados {len(matches)} matches iniciales")
     
-    # Si no encuentra bloques o encuentra solo uno en un string complejo, aplicar división inteligente
     if not matches or (len(matches) == 1 and (" y " in s_std or "sábados" in s_std or "sabados" in s_std)):
         logger.debug("DEBUG - Aplicando división inteligente de bloques")
-        matches = division_inteligente_bloques(s_std, pattern)
+        # Nota: La división inteligente sigue siendo útil para casos como "L-V 9-18 y S 9-13"
+        matches_divided = division_inteligente_bloques(s_std, pattern)
+        if matches_divided:
+             matches = matches_divided
     
     if not matches:
         logger.debug("DEBUG - No se encontraron bloques horarios")
@@ -536,26 +540,17 @@ def parse_schedule_string(schedule_str):
             logger.debug(f"DEBUG - Procesando bloque {block_counter}: '{original_segment}'")
             logger.debug(f"DEBUG - day_phrase: '{day_phrase}'")
             
-            # --- INICIO DE LA CORRECCIÓN ---
-            # EXTRACCIÓN DE PALABRAS (TOKENIZACIÓN) MEJORADA
-            # Esta expresión regular identifica rangos con guion (ej: "lunes-viernes") como un
-            # solo token, y luego busca palabras o números. Esto evita que el rango se separe.
             tokens = re.findall(r'[a-záéíóúñ]+-[a-záéíóúñ]+|[a-záéíóúñ]+|\d+', day_phrase.lower())
-
-            # Se limpian las palabras conectoras que no aportan información de días.
             day_words = [word for word in tokens if word and word not in ['y', 'de', 'proporcional']]
-            # --- FIN DE LA CORRECCIÓN ---
             
             logger.debug(f"DEBUG - day_words procesados: {day_words}")
             
-            # OBTENER DÍAS Y DATA PROPORCIONAL
             current_dias, proportional_data = get_day_indices(day_words)
             
             if not current_dias:
                 logger.debug(f"DEBUG - No se pudieron identificar días en: {day_words}")
                 continue
             
-            # CONFIGURACIÓN DE PERIODICIDAD (MEJORADA)
             if proportional_data and 5 in proportional_data:
                 proporcional_num = proportional_data[5]
                 periodicity = {
@@ -564,7 +559,6 @@ def parse_schedule_string(schedule_str):
                     "factor": proporcional_num / 4.0
                 }
                 logger.debug(f"DEBUG - Periodicidad PROPORCIONAL detectada: {proporcional_num}/4")
-                
             elif any(word in day_words for word in ["por", "medio", "quincenal"]):
                 periodicity = {
                     "tipo": "quincenal", 
@@ -572,7 +566,6 @@ def parse_schedule_string(schedule_str):
                     "factor": 0.5
                 }
                 logger.debug("DEBUG - Periodicidad QUINCENAL detectada")
-                
             else:
                 periodicity = {
                     "tipo": "semanal", 
@@ -581,7 +574,6 @@ def parse_schedule_string(schedule_str):
                 }
                 logger.debug("DEBUG - Periodicidad SEMANAL por defecto")
             
-            # FORMATEO DE HORAS
             start_time = format_time_to_hhmm(time_start_str)
             end_time = format_time_to_hhmm(time_end_str)
             
@@ -589,7 +581,6 @@ def parse_schedule_string(schedule_str):
                 logger.debug(f"DEBUG - Error en formato de horas: {time_start_str} - {time_end_str}")
                 continue
             
-            # GENERACIÓN DE BLOQUE
             block_id = generate_block_id(current_dias, start_time, end_time, periodicity, block_counter)
             
             block_data = {
@@ -601,7 +592,6 @@ def parse_schedule_string(schedule_str):
                 "original_text_segment": original_segment,
             }
             
-            # Detectar si cruza día
             if start_time > end_time:
                 block_data["cruza_dia"] = True
             
