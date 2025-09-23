@@ -508,6 +508,7 @@ def parse_schedule_string(schedule_str):
     if not schedule_str or not isinstance(schedule_str, str):
         return []
         
+    # Estas funciones deben estar definidas en tu código
     s_cleaned = clean_and_standardize(schedule_str)
     s_std = apply_equivalences(s_cleaned, EQUIVALENCIAS)
     
@@ -515,18 +516,18 @@ def parse_schedule_string(schedule_str):
     logger.debug(f"DEBUG parse_schedule_string - Con equivalencias: {s_std}")
     
     pattern = re.compile(
-    r"((?:[a-záéíóúñ\-]+(?:\s+y\s+|\s+)?)+?)"
-    r"(?:\s+de)?\s+"
-    r"(\d{1,2}(?:[:.]?\d{2})?)"
-    r"\s*(?:a|-)\s*"
-    r"(\d{1,2}(?:[:.]?\d{2})?)"
-    , re.IGNORECASE)
+        r"((?:[a-záéíóúñ\-]+(?:\s+y\s+|\s+)?)+?)"  # Grupo 1: Días
+        r"(?:\s+de)?\s+"
+        r"(\d{1,2}(?:[:.]?\d{2})?)"               # Grupo 2: Hora inicio
+        r"\s*(?:a|-)\s*"
+        r"(\d{1,2}(?:[:.]?\d{2})?)"               # Grupo 3: Hora fin
+        , re.IGNORECASE)
     
     # Buscar todos los bloques horarios
     matches = list(pattern.finditer(s_std))
     logger.debug(f"DEBUG - Encontrados {len(matches)} matches iniciales")
     
-    # Si no encuentra bloques o encuentra menos de los esperados, aplicar división inteligente
+    # Si no encuentra bloques o encuentra solo uno en un string complejo, aplicar división inteligente
     if not matches or (len(matches) == 1 and (" y " in s_std or "sábados" in s_std or "sabados" in s_std)):
         logger.debug("DEBUG - Aplicando división inteligente de bloques")
         matches = division_inteligente_bloques(s_std, pattern)
@@ -549,16 +550,15 @@ def parse_schedule_string(schedule_str):
             logger.debug(f"DEBUG - Procesando bloque {block_counter}: '{original_segment}'")
             logger.debug(f"DEBUG - day_phrase: '{day_phrase}'")
             
-            # EXTRACCIÓN DE PALABRAS - CORREGIDA (MANTENER RANGOS CON GUION)
-            if '-' in day_phrase:
-                # Si tiene guión, mantenerlo como una sola palabra para procesar el rango
-                day_words = [day_phrase.lower()]
-                logger.debug(f"DEBUG - Manteniendo rango con guión: '{day_phrase}'")
-            else:
-                # Si no tiene guión, dividir normalmente
-                day_words = re.findall(r'[a-záéíóúñ]+|\d+', day_phrase.lower())
-                
-            day_words = [word for word in day_words if word and word not in ['y', 'de', 'proporcional']]
+            # --- INICIO DE LA CORRECCIÓN ---
+            # EXTRACCIÓN DE PALABRAS (TOKENIZACIÓN) MEJORADA
+            # Esta expresión regular identifica rangos con guion (ej: "lunes-viernes") como un
+            # solo token, y luego busca palabras o números. Esto evita que el rango se separe.
+            tokens = re.findall(r'[a-záéíóúñ]+-[a-záéíóúñ]+|[a-záéíóúñ]+|\d+', day_phrase.lower())
+
+            # Se limpian las palabras conectoras que no aportan información de días.
+            day_words = [word for word in tokens if word and word not in ['y', 'de', 'proporcional']]
+            # --- FIN DE LA CORRECCIÓN ---
             
             logger.debug(f"DEBUG - day_words procesados: {day_words}")
             
@@ -623,7 +623,7 @@ def parse_schedule_string(schedule_str):
             logger.debug(f"DEBUG - Bloque {block_counter} creado exitosamente")
             
         except Exception as e:
-            logger.error(f"ERROR procesando bloque {block_counter}: {str(e)}")
+            logger.error(f"ERROR procesando bloque {block_counter}: {original_segment} -> {str(e)}")
             continue
     
     logger.debug(f"DEBUG - Total bloques normalizados: {len(normalized_blocks)}")
