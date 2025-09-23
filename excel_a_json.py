@@ -48,6 +48,8 @@ EQUIVALENCIAS_EXTRA = {
     "l-v": "lunes-viernes",      # L-V → lunes-viernes
     "l/v": "lunes-viernes",      # L/V → lunes-viernes
     "l v": "lunes-viernes",      # L V → lunes-viernes
+    "l a j": "lunes-jueves",     # L a J → lunes-jueves  ← ¡NUEVO!
+    "la j": "lunes-jueves",      # La J → lunes-jueves   ← ¡NUEVO!
 }
 
 # después de definir EQUIVALENCIAS original:
@@ -174,14 +176,37 @@ def format_time_to_hhmm(time_str):
 
 def get_day_indices(day_words):
     day_indices = set()
-    for word in day_words:
-        if '-' in word:
-            start_day_str, end_day_str = word.split('-')
+    
+    # Primero: detectar patrones con "a" como conector (ej: "lunes", "a", "jueves")
+    i = 0
+    while i < len(day_words):
+        word = day_words[i]
+        
+        # Si encontramos "a" como conector entre dos días
+        if word == "a" and i > 0 and i < len(day_words) - 1:
+            start_day_str = day_words[i-1]
+            end_day_str = day_words[i+1]
             start_idx = DAY_MAP.get(start_day_str.strip())
             end_idx = DAY_MAP.get(end_day_str.strip())
+            
             if start_idx is not None and end_idx is not None:
-                for i in range(start_idx, end_idx + 1):
-                    day_indices.add(i)
+                for j in range(start_idx, end_idx + 1):
+                    day_indices.add(j)
+                i += 2  # Saltamos las palabras ya procesadas
+                continue
+        
+        # Procesamiento normal de rangos con guión
+        elif '-' in word:
+            parts = word.split('-')
+            if len(parts) == 2:
+                start_day_str, end_day_str = parts
+                start_idx = DAY_MAP.get(start_day_str.strip())
+                end_idx = DAY_MAP.get(end_day_str.strip())
+                if start_idx is not None and end_idx is not None:
+                    for j in range(start_idx, end_idx + 1):
+                        day_indices.add(j)
+        
+        # Procesamiento de días individuales
         else:
             idx = DAY_MAP.get(word)
             if isinstance(idx, int):
@@ -192,6 +217,9 @@ def get_day_indices(day_words):
                     exp_idx = DAY_MAP.get(exp_word)
                     if exp_idx is not None:
                         day_indices.add(exp_idx)
+        
+        i += 1
+    
     return sorted(list(day_indices))
 
 def generate_block_id(days, start_time, end_time, periodicity, counter):
