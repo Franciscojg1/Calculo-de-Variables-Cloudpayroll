@@ -63,7 +63,7 @@ MODALIDAD_MAP = {
     'PLAZO FIJO': 'tiempo_completo_plazo_fijo', 'JORNADA PARCIAL': 'tiempo_parcial_indefinido'
 }
 CATEGORIA_MAP = {
-    # Categorías originales
+    # Categorías originales convertidas a MAYÚSCULAS
     r'^1°\s*ADM\s*(?:\(DC\))?$': 'dc_1_adm', 
     r'^1°\s*CATEGOR[ÍI]A\s*(?:\(DC\))?$': 'dc_1_categoria',
     r'^2°\s*CATEGOR[ÍI]A\s*(?:\(DC\))?$': 'dc_2_categoria', 
@@ -73,14 +73,18 @@ CATEGORIA_MAP = {
     r'^5°\s*CATEGOR[ÍI]A\s*(?:\(DC\))?$': 'dc_5_categoria',
     r'^BQ\s*(?:\(DC\))?$': 'dc_bq', 
     r'^PFC\s*(?:\(FC\))?$': 'fc_pfc',
-
-    # Nuevas categorías añadidas con el punto escapado
-    r'^Admin\.\s*de\s*1°$': 'dc_1_adm',
-    r'^Admin\.\s*de\s*2°$': 'dc_2_adm',
-    r'^Admin\.\s*de\s*3°$': 'dc_3_adm',
+    
+    # Nuevas categorías en MAYÚSCULAS (Opción 1)
+    r'^ADMIN\.\s*DE\s*1°$': 'dc_1_adm',
+    r'^ADMIN\.\s*DE\s*2°$': 'dc_2_adm', 
+    r'^ADMIN\.\s*DE\s*3°$': 'dc_3_adm',
     r'^TERCERA\s*CATEGORIA$': 'dc_3_categoria',
     r'^PRIMERA\s*CATEGORIA$': 'dc_1_categoria',
     r'^BECARIOS$': 'becarios',
+    
+    # También agregué estas que estaban en tus logs de error
+    r'^3°\s*CATEGORÍA$': 'dc_3_categoria',  # Con tilde
+    r'^1°\s*CATEGORÍA$': 'dc_1_categoria',  # Con tilde
 }
 TURNOS_NOCTURNOS_COMPLETOS = [('19:00', '07:00'), ('22:00', '06:00'), ('21:00', '07:00'), ('18:00', '07:00')]
 
