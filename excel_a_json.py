@@ -493,34 +493,41 @@ def parsear_fecha(valor: Any) -> Optional[str]:
     return None
 
 def parse_schedule_string(schedule_str):
+    """
+    Parsea un string de horario y devuelve bloques normalizados.
+    Maneja múltiples bloques, días proporcionales y diferentes periodicidades.
+    """
     if not schedule_str or not isinstance(schedule_str, str):
         return []
+        
     s_cleaned = clean_and_standardize(schedule_str)
     s_std = apply_equivalences(s_cleaned, EQUIVALENCIAS)
     
     logger.debug(f"DEBUG parse_schedule_string - Original: {schedule_str}")
     logger.debug(f"DEBUG parse_schedule_string - Con equivalencias: {s_std}")
     
-    # REGEX MEJORADO - más flexible con números entre medio
+    # REGEX MEJORADO - más flexible y robusto
     pattern = re.compile(
-        r"(\b(?:[a-záéíóúñ\d]+(?:\s+(?:a|y|\+|\d+)\s*)*)+\b)"  # Días más flexibles
-        r"(?:\s+(?:de|proporcional|[\d]+))?\s*"  # Permite "de", "proporcional" y números
-        r"(\d{1,2}(?:[:.]?\d{2})?)"
-        r"\s*(?:a|-|a\s+las?)\s*"
-        r"(\d{1,2}(?:[:.]?\d{2})?)"
-        r"(?:\s*(?:hs|horas?))?",
+        r"(\b(?:[a-záéíóúñ]+(?:\s+(?:a|y|\+)\s*[a-záéíóúñ]*)*\s*(?:\d+\s*)*)+\b)"  # Días flexibles
+        r"(?:\s+(?:de|proporcional))?\s*"  # Palabras opcionales
+        r"(\d{1,2}(?:[:.]?\d{2})?)"        # Hora inicio
+        r"\s*(?:a|-|a\s+las?)\s*"          # Separador
+        r"(\d{1,2}(?:[:.]?\d{2})?)"        # Hora fin
+        r"(?:\s*(?:hs|horas?))?",          # Sufijo opcional
         re.IGNORECASE
     )
     
+    # Buscar todos los bloques horarios
     matches = list(pattern.finditer(s_std))
-    logger.debug(f"DEBUG - Encontrados {len(matches)} matches con regex mejorado")
+    logger.debug(f"DEBUG - Encontrados {len(matches)} matches iniciales")
     
-    # Si aún no detecta múltiples bloques, usar división inteligente
-    if len(matches) < 2 and "y sábados" in s_std:
-        logger.debug("DEBUG - Aplicando división inteligente")
+    # Si no encuentra bloques o encuentra menos de los esperados, aplicar división inteligente
+    if not matches or (len(matches) == 1 and (" y " in s_std or "sábados" in s_std or "sabados" in s_std)):
+        logger.debug("DEBUG - Aplicando división inteligente de bloques")
         matches = division_inteligente_bloques(s_std, pattern)
     
     if not matches:
+        logger.debug("DEBUG - No se encontraron bloques horarios")
         return []
         
     normalized_blocks = []
@@ -528,94 +535,144 @@ def parse_schedule_string(schedule_str):
     
     for match in matches:
         block_counter += 1
-        day_phrase = match.group(1).strip()
-        time_start_str = match.group(2)
-        time_end_str = match.group(3)
-        original_segment = match.group(0).strip()
-        
-        logger.debug(f"DEBUG - Procesando bloque: '{original_segment}'")
-        logger.debug(f"DEBUG - day_phrase: '{day_phrase}'")
-        
-        # Limpiar y procesar palabras de días
-        day_words = re.findall(r'[a-záéíóúñ]+|\d+', day_phrase.lower())  # Extraer palabras y números
-        day_words = [word for word in day_words if word and word not in ['y', 'de']]
-        
-        logger.debug(f"DEBUG - day_words limpios: {day_words}")
-        
-        current_dias, proportional_data = get_day_indices(day_words)
-        
-        # Configurar periodicidad
-        if proportional_data and 5 in proportional_data:
-            proporcional_num = proportional_data[5]
-            periodicity = {
-                "tipo": "proporcional", 
-                "frecuencia": f"{proporcional_num}/4",
-                "factor": proporcional_num / 4.0
-            }
-            logger.debug(f"DEBUG - Periodicidad PROPORCIONAL: {proporcional_num}/4")
-        elif "por" in day_words and "medio" in day_words:
-            periodicity = {"tipo": "quincenal", "frecuencia": 2, "factor": 0.5}
-        else:
-            periodicity = {"tipo": "semanal", "frecuencia": 1, "factor": 1.0}
-        
-        start_time = format_time_to_hhmm(time_start_str)
-        end_time = format_time_to_hhmm(time_end_str)
-        
-        if not current_dias:
-            continue
+        try:
+            day_phrase = match.group(1).strip()
+            time_start_str = match.group(2)
+            time_end_str = match.group(3)
+            original_segment = match.group(0).strip()
             
-        block_id = generate_block_id(current_dias, start_time, end_time, periodicity, block_counter)
-        block_data = {
-            "id": block_id,
-            "dias_semana": current_dias,
-            "hora_inicio": start_time,
-            "hora_fin": end_time,
-            "periodicidad": periodicity,
-            "original_text_segment": original_segment,
-        }
-        
-        if start_time > end_time:
-            block_data["cruza_dia"] = True
-        
-        normalized_blocks.append(block_data)
-        logger.debug(f"DEBUG - Bloque {block_counter} creado para días: {current_dias}")
+            logger.debug(f"DEBUG - Procesando bloque {block_counter}: '{original_segment}'")
+            logger.debug(f"DEBUG - day_phrase: '{day_phrase}'")
+            
+            # EXTRACCIÓN MEJORADA de palabras de días
+            # Extraer palabras y números, ignorando conectores comunes
+            day_words = re.findall(r'[a-záéíóúñ]+|\d+', day_phrase.lower())
+            day_words = [word for word in day_words if word and word not in ['y', 'de', 'proporcional']]
+            
+            logger.debug(f"DEBUG - day_words procesados: {day_words}")
+            
+            # OBTENER DÍAS Y DATA PROPORCIONAL
+            current_dias, proportional_data = get_day_indices(day_words)
+            
+            if not current_dias:
+                logger.debug(f"DEBUG - No se pudieron identificar días en: {day_words}")
+                continue
+            
+            # CONFIGURACIÓN DE PERIODICIDAD (MEJORADA)
+            if proportional_data and 5 in proportional_data:
+                proporcional_num = proportional_data[5]
+                periodicity = {
+                    "tipo": "proporcional", 
+                    "frecuencia": f"{proporcional_num}/4",
+                    "factor": proporcional_num / 4.0
+                }
+                logger.debug(f"DEBUG - Periodicidad PROPORCIONAL detectada: {proporcional_num}/4")
+                
+            elif any(word in day_words for word in ["por", "medio", "quincenal"]):
+                periodicity = {
+                    "tipo": "quincenal", 
+                    "frecuencia": 2, 
+                    "factor": 0.5
+                }
+                logger.debug("DEBUG - Periodicidad QUINCENAL detectada")
+                
+            else:
+                periodicity = {
+                    "tipo": "semanal", 
+                    "frecuencia": 1, 
+                    "factor": 1.0
+                }
+                logger.debug("DEBUG - Periodicidad SEMANAL por defecto")
+            
+            # FORMATEO DE HORAS
+            start_time = format_time_to_hhmm(time_start_str)
+            end_time = format_time_to_hhmm(time_end_str)
+            
+            if not start_time or not end_time:
+                logger.debug(f"DEBUG - Error en formato de horas: {time_start_str} - {time_end_str}")
+                continue
+            
+            # GENERACIÓN DE BLOQUE
+            block_id = generate_block_id(current_dias, start_time, end_time, periodicity, block_counter)
+            
+            block_data = {
+                "id": block_id,
+                "dias_semana": current_dias,
+                "hora_inicio": start_time,
+                "hora_fin": end_time,
+                "periodicidad": periodicity,
+                "original_text_segment": original_segment,
+            }
+            
+            # Detectar si cruza día
+            if start_time > end_time:
+                block_data["cruza_dia"] = True
+            
+            normalized_blocks.append(block_data)
+            logger.debug(f"DEBUG - Bloque {block_counter} creado exitosamente")
+            
+        except Exception as e:
+            logger.error(f"ERROR procesando bloque {block_counter}: {str(e)}")
+            continue
     
+    logger.debug(f"DEBUG - Total bloques normalizados: {len(normalized_blocks)}")
     return normalized_blocks
 
 def division_inteligente_bloques(texto, pattern):
-    """División inteligente de bloques cuando el regex falla"""
+    """
+    División inteligente de bloques cuando el regex principal falla.
+    Maneja casos como 'lunes a viernes 7-15 y sábados 3 8-12'
+    """
     bloques = []
     
-    # Dividir por "y" que separa bloques
-    partes = re.split(r'\s+y\s+', texto)
+    # Intentar dividir por "y" que normalmente separa bloques
+    partes = re.split(r'\s+y\s+', texto, flags=re.IGNORECASE)
     
     for parte in partes:
         parte = parte.strip()
         if not parte:
             continue
-            
+        
+        # Buscar match con el patrón principal
         match = pattern.search(parte)
         if match:
             bloques.append(match)
+            logger.debug(f"DEBUG división_inteligente - Match encontrado: {match.group(0)}")
         else:
-            # Intentar extraer horario manualmente
-            horario_match = re.search(r'(\d{1,2}(?:[:.]?\d{2})?)\s*(?:a|-)\s*(\d{1,2}(?:[:.]?\d{2})?)', parte)
+            # Búsqueda más agresiva de horarios
+            horario_match = re.search(
+                r'(\d{1,2}(?:[:.]?\d{2})?)\s*(?:a|-|a\s+las?)\s*(\d{1,2}(?:[:.]?\d{2})?)', 
+                parte
+            )
+            
             if horario_match:
-                # Reconstruir match manualmente
-                class MockMatch:
-                    def __init__(self, parte, start, end):
-                        self.parte = parte
-                        self.start_match = start
-                        self.end_match = end
-                    def group(self, n):
-                        if n == 0: return self.parte
-                        if n == 1: return re.sub(r'\s*\d+\s*(?:a|-)\s*\d+.*', '', self.parte).strip()
-                        if n == 2: return self.start_match
-                        if n == 3: return self.end_match
+                # Reconstruir bloque manualmente
+                start_time, end_time = horario_match.groups()
+                dia_part = parte[:horario_match.start()].strip()
                 
-                start, end = horario_match.groups()
-                mock_match = MockMatch(parte, start, end)
+                if not dia_part:
+                    dia_part = "sábados"  # Default para bloques sin días explícitos
+                
+                bloque_completo = f"{dia_part} {start_time} a {end_time}"
+                
+                # Crear mock match
+                class MockMatch:
+                    def __init__(self, bloque, dia_part, start, end):
+                        self._bloque = bloque
+                        self._dia_part = dia_part
+                        self._start = start
+                        self._end = end
+                    
+                    def group(self, n):
+                        if n == 0: return self._bloque
+                        if n == 1: return self._dia_part
+                        if n == 2: return self._start
+                        if n == 3: return self._end
+                        return ""
+                
+                mock_match = MockMatch(bloque_completo, dia_part, start_time, end_time)
                 bloques.append(mock_match)
+                logger.debug(f"DEBUG división_inteligente - Bloque reconstruido: {bloque_completo}")
     
     return bloques
 
