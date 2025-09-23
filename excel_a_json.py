@@ -241,7 +241,7 @@ def get_day_indices(day_words):
                 i += 1
                 continue
         
-        # 3. PROCESAMIENTO DE RANGOS CON GUION (existente)
+        # 3. PROCESAMIENTO DE RANGOS CON GUION (CORREGIDO)
         elif '-' in word:
             parts = word.split('-')
             if len(parts) == 2:
@@ -251,9 +251,17 @@ def get_day_indices(day_words):
                 end_idx = DAY_MAP.get(end_day_str)
                 
                 if start_idx is not None and end_idx is not None:
+                    # CORRECCIÓN: EXPANDIR CORRECTAMENTE EL RANGO
                     start_idx, end_idx = sorted([start_idx, end_idx])
                     for j in range(start_idx, end_idx + 1):
                         day_indices.add(j)
+                    logger.debug(f"DEBUG get_day_indices - Rango expandido: {start_day_str}-{end_day_str} -> {list(range(start_idx, end_idx + 1))}")
+                else:
+                    # Si no es un rango válido, tratar los días por separado
+                    for part in parts:
+                        idx = DAY_MAP.get(part.strip().lower())
+                        if isinstance(idx, int):
+                            day_indices.add(idx)
         
         # 4. PROCESAMIENTO DE DÍAS INDIVIDUALES (MEJORADA)
         else:
