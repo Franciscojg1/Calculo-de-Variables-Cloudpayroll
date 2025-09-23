@@ -51,19 +51,19 @@ EQUIVALENCIAS_EXTRA = {
     "l a j": "lunes-jueves",     # L a J → lunes-jueves
     "la j": "lunes-jueves",      # La J → lunes-jueves
     
-    # SÁBADOS PROPORCIONALES CON "Y" PARA MEJOR SEPARACIÓN DE BLOQUES
-    "3s": "y sábado proporcional 3",
-    "2s": "y sábado proporcional 2", 
-    "1s": "y sábado proporcional 1",
-    "3sab": "y sábado proporcional 3",
-    "2sab": "y sábado proporcional 2",
-    "1sab": "y sábado proporcional 1",
-    "3sáb": "y sábado proporcional 3",
-    "2sáb": "y sábado proporcional 2",
-    "1sáb": "y sábado proporcional 1",
-    "3 s": "y sábado proporcional 3",
-    "2 s": "y sábado proporcional 2",
-    "1 s": "y sábado proporcional 1",
+    # SÁBADOS PROPORCIONALES - FORMATO MÁS SIMPLE QUE FUNCIONE CON EL REGEX
+    "3s": "y sábados 8-12",           # 3S → y sábados 8-12 + lógica proporcional
+    "2s": "y sábados 8-12",           # 2S → y sábados 8-12 + lógica proporcional  
+    "1s": "y sábados 8-12",           # 1S → y sábados 8-12 + lógica proporcional
+    "3sab": "y sábados 8-12",
+    "2sab": "y sábados 8-12", 
+    "1sab": "y sábados 8-12",
+    "3sáb": "y sábados 8-12",
+    "2sáb": "y sábados 8-12",
+    "1sáb": "y sábados 8-12",
+    "3 s": "y sábados 8-12",
+    "2 s": "y sábados 8-12",
+    "1 s": "y sábados 8-12",
 }
 
 # después de definir EQUIVALENCIAS original:
@@ -196,22 +196,32 @@ def get_day_indices(day_words):
     while i < len(day_words):
         word = day_words[i]
         
-        # Detectar "sábado proporcional X" (nuevo caso)
-        if word == "sábado" and i < len(day_words) - 2:
-            if day_words[i+1] == "proporcional" and day_words[i+2].isdigit():
-                proporcional_num = int(day_words[i+2])
+        # Detectar "sábados X" o "sabados X" donde X es 1, 2, 3 (NUEVO - más simple)
+        if word in ["sábados", "sabados"] and i < len(day_words) - 1:
+            next_word = day_words[i+1]
+            if next_word.isdigit() and 1 <= int(next_word) <= 4:
+                proporcional_num = int(next_word)
                 proportional_data[5] = proporcional_num  # 5 = sábado
                 day_indices.add(5)
-                i += 3  # Saltamos "sábado proporcional X"
+                i += 2  # Saltamos "sábados" y el número
+                continue
+        
+        # Detectar "sábado proporcional X" (caso original - mantener por si acaso)
+        elif word == "sábado" and i < len(day_words) - 2:
+            if day_words[i+1] == "proporcional" and day_words[i+2].isdigit():
+                proporcional_num = int(day_words[i+2])
+                proportional_data[5] = proporcional_num
+                day_indices.add(5)
+                i += 3
                 continue
         
         # Detectar "sabado proporcional X" (alternativa sin acento)
         elif word == "sabado" and i < len(day_words) - 2:
             if day_words[i+1] == "proporcional" and day_words[i+2].isdigit():
                 proporcional_num = int(day_words[i+2])
-                proportional_data[5] = proporcional_num  # 5 = sábado
+                proportional_data[5] = proporcional_num
                 day_indices.add(5)
-                i += 3  # Saltamos "sabado proporcional X"
+                i += 3
                 continue
         
         # Si encontramos "a" como conector entre dos días (caso existente)
