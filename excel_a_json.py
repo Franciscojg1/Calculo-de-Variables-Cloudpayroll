@@ -48,20 +48,22 @@ EQUIVALENCIAS_EXTRA = {
     "l-v": "lunes-viernes",      # L-V → lunes-viernes
     "l/v": "lunes-viernes",      # L/V → lunes-viernes
     "l v": "lunes-viernes",      # L V → lunes-viernes
-    "l a j": "lunes-jueves",     # L a J → lunes-jueves  ← ¡NUEVO!
-    "la j": "lunes-jueves",      # La J → lunes-jueves   ← ¡NUEVO!
-    "3s": "sábado proporcional 3",
-    "2s": "sábado proporcional 2", 
-    "1s": "sábado proporcional 1",
-    "3sab": "sábado proporcional 3",
-    "2sab": "sábado proporcional 2",
-    "1sab": "sábado proporcional 1",
-    "3sáb": "sábado proporcional 3",
-    "2sáb": "sábado proporcional 2",
-    "1sáb": "sábado proporcional 1",
-    "3 s": "sábado proporcional 3",
-    "2 s": "sábado proporcional 2",
-    "1 s": "sábado proporcional 1",
+    "l a j": "lunes-jueves",     # L a J → lunes-jueves
+    "la j": "lunes-jueves",      # La J → lunes-jueves
+    
+    # SÁBADOS PROPORCIONALES CON "Y" PARA MEJOR SEPARACIÓN DE BLOQUES
+    "3s": "y sábado proporcional 3",
+    "2s": "y sábado proporcional 2", 
+    "1s": "y sábado proporcional 1",
+    "3sab": "y sábado proporcional 3",
+    "2sab": "y sábado proporcional 2",
+    "1sab": "y sábado proporcional 1",
+    "3sáb": "y sábado proporcional 3",
+    "2sáb": "y sábado proporcional 2",
+    "1sáb": "y sábado proporcional 1",
+    "3 s": "y sábado proporcional 3",
+    "2 s": "y sábado proporcional 2",
+    "1 s": "y sábado proporcional 1",
 }
 
 # después de definir EQUIVALENCIAS original:
@@ -488,8 +490,43 @@ def parse_schedule_string(schedule_str):
     
     logger.debug(f"DEBUG - Encontrados {len(matches)} matches")
     
+    # DETECCIÓN MANUAL DE MÚLTIPLES BLOQUES SIN CONECTOR (NUEVO)
+    if len(matches) == 1 and ("sábado proporcional" in s_std or "sabado proporcional" in s_std):
+        logger.debug("DEBUG - Intentando división manual por 'sábado proporcional'")
+        
+        # Buscar el punto donde empieza el segundo bloque
+        texto = s_std
+        segundo_bloque_start = None
+        
+        # Buscar "sábado proporcional" o "sabado proporcional"
+        for patron in ["sábado proporcional", "sabado proporcional"]:
+            if patron in texto:
+                segundo_bloque_start = texto.find(patron)
+                break
+        
+        if segundo_bloque_start is not None and segundo_bloque_start > 0:
+            # Dividir en dos bloques
+            bloque1 = texto[:segundo_bloque_start].strip()
+            bloque2 = texto[segundo_bloque_start:].strip()
+            
+            logger.debug(f"DEBUG - Bloque 1: '{bloque1}'")
+            logger.debug(f"DEBUG - Bloque 2: '{bloque2}'")
+            
+            # Procesar ambos bloques por separado
+            matches = []
+            for bloque in [bloque1, bloque2]:
+                match_bloque = pattern.search(bloque)
+                if match_bloque:
+                    matches.append(match_bloque)
+                    logger.debug(f"DEBUG - Match encontrado en bloque: {match_bloque.group(0)}")
+                else:
+                    logger.debug(f"DEBUG - No se encontró match en bloque: '{bloque}'")
+            
+            logger.debug(f"DEBUG - Después de división manual: {len(matches)} matches")
+    
     if not matches:
         return []
+        
     normalized_blocks = []
     block_counter = 0
     for match in matches:
