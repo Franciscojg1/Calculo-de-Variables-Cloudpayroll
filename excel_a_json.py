@@ -194,16 +194,9 @@ def limpiar_prefijos_horas(text: str) -> str:
     return re.sub(r'^\s*\d+\s*h?s?\b\s*', '', text, flags=re.IGNORECASE)
 
 def apply_equivalences(text: str, equivalences: dict) -> str:
-    """
-    Normaliza texto de horarios:
-    - Prioriza rangos largos
-    - Respeta horarios que ya funcionaban
-    - Normaliza conectores y periodicidades
-    - Corrige sábados proporcionales para que se detecten como bloque único
-    """
     original_text = text
 
-    # Normalize variantes súper flexibles de LaV
+    # Normalizar variantes LaV
     text = re.sub(
         r'\b(?:l\s*[\.\-]?\s*a\s*[\.\-]?\s*v)\b',
         'lunes-viernes',
@@ -219,11 +212,11 @@ def apply_equivalences(text: str, equivalences: dict) -> str:
         flags=re.IGNORECASE
     )
 
-    # Normalizar conectores " y " para cortar bien tramos compuestos
+    # Normalizar conectores " y "
     text = re.sub(r'\s+y\s+(?=[a-záéíóúñ])', ' Y ', text, flags=re.IGNORECASE)
 
-    # --- NUEVO: unir sábados proporcionales al horario ---
-    # Ej: "sábado 3 8-12" → "sábado 8-12 3S"
+    # --- NUEVO: unir sábados proporcionales con el horario ---
+    # Detecta "sábado 3 8-12" o "s 3 8-12"
     def saturday_proportional(match):
         day = match.group(1)
         num = match.group(2)
@@ -231,14 +224,17 @@ def apply_equivalences(text: str, equivalences: dict) -> str:
         end = match.group(4)
         return f"{day} {start}-{end} {num}S"
 
-    text = re.sub(
-        r'\b(sábado|sabado)\s+(\d)\s+(\d{1,2}(?:[:\.]\d{2})?)\s*[-a]\s*(\d{1,2}(?:[:\.]\d{2})?)',
+    text, count = re.subn(
+        r'\b(sábado|sabado|s)\s+(\d)\s+(\d{1,2}(?:[:\.]\d{2})?)\s*[-a]\s*(\d{1,2}(?:[:\.]\d{2})?)',
         saturday_proportional,
         text,
         flags=re.IGNORECASE
     )
 
-    # Aplicar equivalencias largas primero
+    if count > 0:
+        logger.debug(f"DEBUG apply_equivalences_safe - Sábados proporcionales unidos: {count} reemplazos")
+
+    # Aplicar equivalencias largas
     for old, new in sorted(equivalences.items(), key=lambda x: len(x[0]), reverse=True):
         pattern = r'\b' + re.escape(old) + r'\b'
         text = re.sub(pattern, new, text, flags=re.IGNORECASE)
