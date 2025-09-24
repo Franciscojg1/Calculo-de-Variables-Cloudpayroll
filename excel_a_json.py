@@ -199,7 +199,7 @@ def apply_equivalences(text: str, equivalences: dict) -> str:
     - Prioriza rangos largos
     - Respeta horarios que ya funcionaban
     - Normaliza conectores y periodicidades
-    - Detecta sábados tipo "1S", "2S", "3S" y los unifica
+    - Reconoce sábados tipo '1S', '2S', '3S' y los deja como 'sábado mensual' con frecuencia proporcional
     """
     original_text = text
 
@@ -219,12 +219,12 @@ def apply_equivalences(text: str, equivalences: dict) -> str:
         flags=re.IGNORECASE
     )
 
-    # Detectar patrones tipo "3 S" → "3S"
-    text = re.sub(
-        r'\b(\d+)\s*[sS]\b',
-        lambda m: f"{m.group(1)}S",
-        text
-    )
+    # Detectar sábados tipo 1S, 2S, 3S → 'sábado 1', 'sábado 2', etc.
+    def replace_sabados(match):
+        num = match.group(1)
+        return f"sábado {num}"
+
+    text = re.sub(r'\b(\d+)\s*[sS]\b', replace_sabados, text)
 
     # Normalizar conectores " y " para cortar bien tramos compuestos
     text = re.sub(r'\s+y\s+(?=[a-záéíóúñ])', ' Y ', text, flags=re.IGNORECASE)
