@@ -486,35 +486,50 @@ def parsear_fecha(valor: Any) -> Optional[str]:
 def get_day_indices(day_words):
     """
     Procesa palabras de días y devuelve índices de días + datos proporcionales.
-    Maneja días individuales, rangos con guion y rangos con "a".
+    Maneja días individuales, rangos con guion, rangos con "a" y sábados proporcionales tipo '3S'.
     """
     day_indices, proportional_data = set(), {}
     i = 0
     while i < len(day_words):
         word = day_words[i].strip().lower()
-        # Caso 1: Sábados proporcionales (ej: "sábados 1")
-        if word in ["sábado", "sabado", "sábados"] and i + 1 < len(day_words) and day_words[i+1].isdigit():
+
+        # Caso 1: Sábados proporcionales "3S", "1s", etc.
+        m_sab = re.match(r'(\d+)\s*s', word, flags=re.IGNORECASE)
+        if m_sab:
+            num = int(m_sab.group(1))
+            if 1 <= num <= 4:
+                proportional_data[5] = num  # 5 = sábado
+                day_indices.add(5)
+                i += 1
+                continue
+
+        # Caso 2: Sábados con número separado ("sábado 3")
+        elif word in ["sábado", "sabado", "sábados"] and i + 1 < len(day_words) and day_words[i+1].isdigit():
             num = int(day_words[i+1])
             if 1 <= num <= 4:
-                proportional_data[5], day_indices = num, day_indices.union({5})
+                proportional_data[5] = num
+                day_indices.add(5)
                 i += 2
                 continue
-        # Caso 2: Rangos con guion (ej: "lunes-viernes")
+
+        # Caso 3: Rangos con guion (ej: "lunes-viernes")
         elif '-' in word:
             parts = word.split('-')
             if len(parts) == 2 and (start_idx := DAY_MAP.get(parts[0])) is not None and (end_idx := DAY_MAP.get(parts[1])) is not None:
                 day_indices.update(range(min(start_idx, end_idx), max(start_idx, end_idx) + 1))
-        # Caso 3: Rangos con "a" (ej: "lunes a viernes") - LÓGICA RESTAURADA
+
+        # Caso 4: Rangos con "a" (ej: "lunes a viernes") - lógica restaurada
         elif word == "a" and i > 0 and i < len(day_words) - 1:
             start_word, end_word = day_words[i-1], day_words[i+1]
             if (start_idx := DAY_MAP.get(start_word)) is not None and (end_idx := DAY_MAP.get(end_word)) is not None:
-                 day_indices.update(range(min(start_idx, end_idx), max(start_idx, end_idx) + 1))
-                 # Como 'a' agrupa al anterior y al siguiente, no sumamos 'i' aquí,
-                 # el bucle lo hará por nosotros.
-        # Caso 4: Días individuales
+                day_indices.update(range(min(start_idx, end_idx), max(start_idx, end_idx) + 1))
+
+        # Caso 5: Días individuales
         elif (idx := DAY_MAP.get(word)) is not None:
             day_indices.add(idx)
+
         i += 1
+
     return sorted(list(day_indices)), proportional_data
 
 # --- FUNCIÓN DE AYUDA 2: division_inteligente_bloques (SIN CAMBIOS) ---
