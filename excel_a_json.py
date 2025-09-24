@@ -177,9 +177,10 @@ def apply_equivalences(text: str, equivalences: dict) -> str:
         flags=re.IGNORECASE
     )
 
-    # 🔹 Normalización de conectores " y " → para cortar bien tramos compuestos
-    # Ej: "lunes a viernes ... y sábados ..." => "lunes a viernes ... Y sábados ..."
-    text = re.sub(r'\s+y\s+(?=[a-záéíóúñ])', ' Y ', text, flags=re.IGNORECASE)
+    # 🔹 Normalización de conectores " y " cuando preceden a un día de la semana
+    # Esto inserta un delimitador fuerte (Y |) para que el parser separe en bloques
+    dias = r"(lunes|martes|miércoles|miercoles|jueves|viernes|sábado|sabado|domingo)"
+    text = re.sub(rf'\s+y\s+(?={dias})', ' Y | ', text, flags=re.IGNORECASE)
 
     # resto de equivalencias (palabra completa), priorizando claves largas
     for old, new in sorted(equivalences.items(), key=lambda x: len(x[0]), reverse=True):
