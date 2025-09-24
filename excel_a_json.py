@@ -551,8 +551,9 @@ def division_inteligente_bloques(texto, pattern):
 # --- FUNCIÓN PRINCIPAL: parse_schedule_string (ESTRATEGIA HÍBRIDA FINAL) ---
 def parse_schedule_string(schedule_str):
     """
-    Parsea un string de horario y devuelve bloques normalizados, incluyendo
-    LAV, quincenal, mensual, fines de semana, y tolerancia a '.', ':', '-'.
+    Parsea un string de horario y devuelve bloques normalizados,
+    incluyendo LAV, quincenal, mensual, sábados proporcionales,
+    y tolerancia a '.', ':', '-'.
     """
     if not schedule_str:
         return []
@@ -563,11 +564,10 @@ def parse_schedule_string(schedule_str):
     s_std = apply_equivalences(s_clean, DIA_RANGO_MAPPING)
     logger.debug(f"DEBUG - Después de apply_equivalences: '{s_std}'")
 
-    # Regex mejorada: detecta días (lunes-viernes, sábado, domingo) + horarios
     pattern = re.compile(
-        r"((?:[a-záéíóúñ]+(?:-[a-záéíóúñ]+)?\s*)+?)"  # días, ej: lunes-viernes
-        r"\s*(?:de\s*)?"  # opcional "de"
-        r"(\d{1,2}(?:[:\.]\d{2})?)"  # hora inicio, ej: 7:30 o 7.30
+        r"((?:[a-záéíóúñ]+(?:-[a-záéíóúñ]+)?\s*)+?)"  # días
+        r"\s*(?:de\s*)?"
+        r"(\d{1,2}(?:[:\.]\d{2})?)"  # hora inicio
         r"\s*(?:a|-)\s*"
         r"(\d{1,2}(?:[:\.]\d{2})?)",  # hora fin
         re.IGNORECASE
@@ -576,7 +576,6 @@ def parse_schedule_string(schedule_str):
     matches = list(pattern.finditer(s_std))
     logger.debug(f"DEBUG - Bloques encontrados con finditer: {len(matches)}")
 
-    # Si no encuentra bloques, fallback con división inteligente
     if not matches and ("Y" in s_std or "y" in s_std):
         logger.debug("DEBUG - Usando fallback de división inteligente por 'Y'")
         matches = division_inteligente_bloques(s_std, pattern)
@@ -600,45 +599,15 @@ def parse_schedule_string(schedule_str):
                 logger.debug(f"DEBUG - No se obtuvieron días válidos para bloque {idx}, se ignora")
                 continue
 
-            # Detectar periodicidad
-            if proportional_data and 5 in proportional_data:
-                periodicity = {
-                    "tipo": "proporcional",
-                    "frecuencia": f"{proportional_data[5]}/4",
-                    "factor": proportional_data[5]/4.0
-                }
+            # Detectar periodicidad general
+            periodicity = {"tipo": "semanal", "frecuencia": 1, "factor": 1.0}
 
-            # NUEVO: detectar sábados “1S”, “2S”, “3S” al mes
-            elif any(re.match(r'(\d+)[\s]*s', w, flags=re.IGNORECASE) for w in day_words):
-                for w in day_words:
-                    m = re.match(r'(\d+)[\s]*s', w, flags=re.IGNORECASE)
-                    if m:
-                        num_sabados = int(m.group(1))
-                        periodicity = {
-                            "tipo": "mensual",
-                            "frecuencia": num_sabados / 4,  # factor semanal
-                            "factor": num_sabados / 4.0
-                        }
-                        break
-
-            elif any(w in day_words for w in ["mensual", "mes"]):
-                periodicity = {
-                    "tipo": "mensual",
-                    "frecuencia": 0.25,
-                    "factor": 0.25
-                }
-            elif any(w in day_words for w in ["por", "medio"]):
-                periodicity = {
-                    "tipo": "quincenal",
-                    "frecuencia": 2,
-                    "factor": 0.5
-                }
-            else:
-                periodicity = {
-                    "tipo": "semanal",
-                    "frecuencia": 1,
-                    "factor": 1.0
-                }
+            # Ajuste de sábados proporcionales
+            if 5 in proportional_data:
+                factor_sabado = proportional_data[5] / 4.0  # ejemplo: 3S → 3/4
+                periodicity["tipo"] = "proporcional_sabado"
+                periodicity["frecuencia"] = factor_sabado
+                periodicity["factor"] = factor_sabado
 
             start_time = format_time_to_hhmm(match.group(2))
             end_time = format_time_to_hhmm(match.group(3))
