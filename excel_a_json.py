@@ -480,7 +480,10 @@ def parse_schedule_string(schedule_str):
     logger.debug(f"DEBUG parse_schedule_string - Con equivalencias: '{s_std}'")
     
     # Regex final: no codicioso para permitir que finditer separe bloques por espacios.
-    pattern = re.compile(r"((?:(?:[a-záéíóúñ\-]+|\d)(?:\s+)?)+?)\s*(?:de)?\s+(\d{1,2}(?:[:.]?\d{2})?)\s*(?:a|-)\s*(\d{1,2}(?:[:.]?\d{2})?)", re.IGNORECASE)
+    pattern = re.compile(
+    r"((?:[a-záéíóúñ\-]+\s*)+)\s*(\d{1,2}(?::?\d{2})?)\s*(?:a|-)\s*(\d{1,2}(?::?\d{2})?)",
+    re.IGNORECASE
+)
     
     # Estrategia Híbrida:
     # 1. Intentar encontrar todos los bloques con finditer (ideal para bloques separados por espacios).
