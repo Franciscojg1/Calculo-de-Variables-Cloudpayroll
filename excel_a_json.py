@@ -495,32 +495,34 @@ def division_inteligente_bloques(texto, pattern):
 # --- FUNCIÓN PRINCIPAL: parse_schedule_string (ESTRATEGIA HÍBRIDA FINAL) ---
 def parse_schedule_string(schedule_str):
     """
-    Parsea un string de horario y devuelve bloques normalizados con periodicidad.
-    Maneja semanal, quincenal y mensual.
+    Parsea un string de horario y devuelve bloques normalizados, incluyendo
+    LAV, quincenal, mensual, fines de semana, y tolerancia a '.', ':', '-'.
     """
     if not schedule_str:
         return []
 
-    # Preprocesamiento
+    logger.debug(f"DEBUG - Texto original: '{schedule_str}'")
     s_clean = clean_and_standardize(schedule_str)
+    logger.debug(f"DEBUG - Después de clean_and_standardize: '{s_clean}'")
     s_std = apply_equivalences(s_clean, EQUIVALENCIAS)
-    logger.debug(f"DEBUG parse_schedule_string - Texto original: '{schedule_str}'")
-    logger.debug(f"DEBUG parse_schedule_string - Después de clean_and_standardize: '{s_clean}'")
-    logger.debug(f"DEBUG parse_schedule_string - Después de apply_equivalences: '{s_std}'")
+    logger.debug(f"DEBUG - Después de apply_equivalences: '{s_std}'")
 
-    # Regex tolerante con . o : en minutos, acepta separadores de rango a o -
+    # Regex mejorada: detecta días (lunes-viernes, sábado, domingo) + horarios
     pattern = re.compile(
-        r"((?:[a-záéíóúñ\-]+\s*)+)\s*(\d{1,2}(?::?\d{2})?)\s*(?:a|-)\s*(\d{1,2}(?::?\d{2})?)",
+        r"((?:[a-záéíóúñ]+(?:-[a-záéíóúñ]+)?\s*)+?)"  # días, ej: lunes-viernes
+        r"\s*(?:de\s*)?"  # opcional "de"
+        r"(\d{1,2}(?:[:\.]\d{2})?)"  # hora inicio, ej: 7:30 o 7.30
+        r"\s*(?:a|-)\s*"
+        r"(\d{1,2}(?:[:\.]\d{2})?)",  # hora fin
         re.IGNORECASE
     )
 
-    # Estrategia Híbrida: finditer
     matches = list(pattern.finditer(s_std))
-    logger.debug(f"DEBUG parse_schedule_string - Bloques encontrados con finditer: {len(matches)}")
+    logger.debug(f"DEBUG - Bloques encontrados con finditer: {len(matches)}")
 
-    # Fallback división inteligente para casos con 'Y'
-    if len(matches) <= 1 and " Y " in s_std:
-        logger.debug("DEBUG - Usando fallback de división inteligente para string con 'Y'.")
+    # Si no encuentra bloques, fallback con división inteligente
+    if not matches and ("Y" in s_std or "y" in s_std):
+        logger.debug("DEBUG - Usando fallback de división inteligente por 'Y'")
         matches = division_inteligente_bloques(s_std, pattern)
         logger.debug(f"DEBUG - Bloques después de división inteligente: {len(matches)}")
 
@@ -529,46 +531,40 @@ def parse_schedule_string(schedule_str):
         return []
 
     normalized_blocks = []
+
     for idx, match in enumerate(matches):
         logger.debug(f"DEBUG - Procesando bloque {idx}: '{match.group(0)}'")
         try:
             day_phrase = match.group(1).strip()
             tokens = re.findall(r'[a-záéíóúñ]+-[a-záéíóúñ]+|[a-záéíóúñ]+|\d+', day_phrase)
-            day_words = [w for w in tokens if w.lower() not in ['y', 'de']]
+            day_words = [w for w in tokens if w not in ['y', 'de']]
 
             current_dias, proportional_data = get_day_indices(day_words)
             if not current_dias:
                 logger.debug(f"DEBUG - No se obtuvieron días válidos para bloque {idx}, se ignora")
                 continue
 
-            # Determinar periodicidad
+            # Detectar periodicidad
             if proportional_data and 5 in proportional_data:
-                periodicity = {
-                    "tipo": "proporcional",
-                    "frecuencia": f"{proportional_data[5]}/4",
-                    "factor": proportional_data[5] / 4.0
-                }
-            elif any(w.lower() in ["mensual", "mes"] for w in day_words):
-                periodicity = {
-                    "tipo": "mensual",
-                    "frecuencia": 0.25,
-                    "factor": 0.25
-                }
-            elif any(w.lower() in ["por", "medio"] for w in day_words):
-                periodicity = {
-                    "tipo": "quincenal",
-                    "frecuencia": 0.5,
-                    "factor": 0.5
-                }
+                periodicity = {"tipo": "proporcional",
+                               "frecuencia": f"{proportional_data[5]}/4",
+                               "factor": proportional_data[5]/4.0}
+            elif any(w in day_words for w in ["mensual", "mes"]):
+                periodicity = {"tipo": "mensual",
+                               "frecuencia": 0.25,
+                               "factor": 0.25}
+            elif any(w in day_words for w in ["por", "medio"]):
+                periodicity = {"tipo": "quincenal",
+                               "frecuencia": 2,
+                               "factor": 0.5}
             else:
-                periodicity = {
-                    "tipo": "semanal",
-                    "frecuencia": 1,
-                    "factor": 1.0
-                }
+                periodicity = {"tipo": "semanal",
+                               "frecuencia": 1,
+                               "factor": 1.0}
 
             start_time = format_time_to_hhmm(match.group(2))
             end_time = format_time_to_hhmm(match.group(3))
+
             if not start_time or not end_time:
                 logger.debug(f"DEBUG - Horas inválidas en bloque {idx}, se ignora")
                 continue
@@ -584,13 +580,16 @@ def parse_schedule_string(schedule_str):
                 "original_text_segment": match.group(0).strip(),
                 "cruza_dia": start_time > end_time
             }
+
             normalized_blocks.append(block_data)
             logger.debug(f"DEBUG - Bloque {idx} agregado: {block_data}")
+
         except Exception as e:
             logger.error(f"ERROR procesando bloque {idx}: {match.group(0)} -> {e}")
 
     logger.debug(f"DEBUG - Total bloques normalizados: {len(normalized_blocks)}")
     return normalized_blocks
+
 
 def calcular_resumen_horario(bloques, nombre_sede=None):
     from datetime import datetime as dt, time as tm, timedelta
