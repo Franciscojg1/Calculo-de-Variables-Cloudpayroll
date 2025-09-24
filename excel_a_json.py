@@ -413,62 +413,36 @@ def parsear_fecha(valor: Any) -> Optional[str]:
 # BLOQUE DE CÓDIGO ÚNICO Y CORREGIDO (INCLUYE TODAS LAS FUNCIONES)
 # ==============================================================================
 
-# -- FUNCIÓN DE AYUDA 1 --
+# ==============================================================================
+# BLOQUE DE FUNCIONES FINAL Y CONSOLIDADO PARA TU SCRIPT PRINCIPAL
+# Reemplaza tus funciones existentes con este bloque completo.
+# ==============================================================================
+
+# --- FUNCIÓN DE AYUDA 1: get_day_indices (VERSIÓN FINAL) ---
 def get_day_indices(day_words):
     """
     Procesa palabras de días y devuelve índices de días + datos proporcionales.
     """
-    day_indices = set()
-    proporcional_data = {}
+    day_indices, proportional_data = set(), {}
     i = 0
     while i < len(day_words):
-        word = day_words[i].strip().lower()
-        if word in ["sábados", "sabados", "sábado", "sabado"] and i < len(day_words) - 1 and day_words[i+1].strip().isdigit():
-            next_word = day_words[i+1].strip()
-            proporcional_num = int(next_word)
-            if 1 <= proporcional_num <= 4:
-                proporcional_data[5] = proporcional_num
-                day_indices.add(5)
+        word = day_words[i]
+        if word in ["sábado", "sabado", "sábados"] and i + 1 < len(day_words) and day_words[i+1].isdigit():
+            num = int(day_words[i+1])
+            if 1 <= num <= 4:
+                proportional_data[5], day_indices = num, day_indices.union({5})
                 i += 2
-                continue
-        elif word == "a" and i > 0 and i < len(day_words) - 1:
-            start_day_str, end_day_str = day_words[i-1].strip().lower(), day_words[i+1].strip().lower()
-            start_idx, end_idx = DAY_MAP.get(start_day_str), DAY_MAP.get(end_day_str)
-            if start_idx is not None and end_idx is not None:
-                start_idx, end_idx = sorted([start_idx, end_idx])
-                for j in range(start_idx, end_idx + 1):
-                    day_indices.add(j)
-                i += 2
-                continue
-            else:
-                i += 1
                 continue
         elif '-' in word:
             parts = word.split('-')
-            if len(parts) == 2:
-                start_day_str, end_day_str = parts[0].strip().lower(), parts[1].strip().lower()
-                start_idx, end_idx = DAY_MAP.get(start_day_str), DAY_MAP.get(end_day_str)
-                if start_idx is not None and end_idx is not None:
-                    start_idx, end_idx = sorted([start_idx, end_idx])
-                    for j in range(start_idx, end_idx + 1):
-                        day_indices.add(j)
-                else:
-                    for part in parts:
-                        if isinstance(DAY_MAP.get(part.strip().lower()), int):
-                            day_indices.add(DAY_MAP.get(part.strip().lower()))
-        else:
-            idx = DAY_MAP.get(word)
-            if isinstance(idx, int):
-                day_indices.add(idx)
-            elif isinstance(idx, str):
-                for exp_word in idx.split():
-                    if DAY_MAP.get(exp_word.strip()) is not None:
-                        day_indices.add(DAY_MAP.get(exp_word.strip()))
+            if len(parts) == 2 and (start_idx := DAY_MAP.get(parts[0])) is not None and (end_idx := DAY_MAP.get(parts[1])) is not None:
+                day_indices.update(range(min(start_idx, end_idx), max(start_idx, end_idx) + 1))
+        elif (idx := DAY_MAP.get(word)) is not None:
+            day_indices.add(idx)
         i += 1
-    day_indices_clean = sorted([d for d in day_indices if isinstance(d, int) and 0 <= d <= 7])
-    return day_indices_clean, proporcional_data
+    return sorted(list(day_indices)), proportional_data
 
-# -- FUNCIÓN DE AYUDA 2 --
+# --- FUNCIÓN DE AYUDA 2: division_inteligente_bloques (VERSIÓN FINAL) ---
 def division_inteligente_bloques(texto, pattern):
     """
     División de respaldo para strings con múltiples bloques horarios.
@@ -476,107 +450,65 @@ def division_inteligente_bloques(texto, pattern):
     bloques = []
     partes = re.split(r'\s+y\s+', texto, flags=re.IGNORECASE)
     for parte in partes:
-        parte = parte.strip()
-        if not parte:
-            continue
-        match = pattern.search(parte)
-        if match:
+        if parte and (match := pattern.search(parte.strip())):
             bloques.append(match)
-            logger.debug(f"DEBUG división_inteligente - Match encontrado: {match.group(0)}")
     return bloques
 
-# -- FUNCIÓN PRINCIPAL --
+# --- FUNCIÓN PRINCIPAL: parse_schedule_string (VERSIÓN FINAL) ---
 def parse_schedule_string(schedule_str):
     """
     Parsea un string de horario y devuelve bloques normalizados.
     """
-    if not schedule_str or not isinstance(schedule_str, str):
-        return []
-        
-    s_cleaned = clean_and_standardize(schedule_str)
-    s_std = apply_equivalences(s_cleaned, EQUIVALENCIAS)
-    logger.debug(f"DEBUG parse_schedule_string - Original: {schedule_str}")
-    logger.debug(f"DEBUG parse_schedule_string - Con equivalencias: {s_std}")
+    if not schedule_str: return []
+    s_std = apply_equivalences(clean_and_standardize(schedule_str), EQUIVALENCIAS)
+    logger.debug(f"DEBUG parse_schedule_string - Con equivalencias: '{s_std}'")
     
-    pattern = re.compile(
-        r"((?:[a-záéíóúñ\-]+(?:\s+y\s+|\s+)?)+)"
-        r"(?:\s+de)?\s+"
-        r"(\d{1,2}(?:[:.]?\d{2})?)"
-        r"\s*(?:a|-)\s*"
-        r"(\d{1,2}(?:[:.]?\d{2})?)"
-        , re.IGNORECASE)
+    # CORRECCIÓN 1: Regex definitivo que acepta números en la frase de días (ej: "sábados 1")
+    pattern = re.compile(r"((?:[a-záéíóúñ\d\-]+(?:\s+y\s+|\s+)?)+?)(?:\s+de)?\s+(\d{1,2}(?:[:.]?\d{2})?)\s*(?:a|-)\s*(\d{1,2}(?:[:.]?\d{2})?)", re.IGNORECASE)
     
     matches = list(pattern.finditer(s_std))
-    logger.debug(f"DEBUG - Encontrados {len(matches)} matches iniciales")
+    
+    # CORRECCIÓN 2: Lógica simplificada que confía en la división inteligente si hay una "y"
+    if " y " in s_std:
+         logger.debug("DEBUG - Se detectó 'y', aplicando división inteligente de bloques...")
+         matches = division_inteligente_bloques(s_std, pattern)
 
-    run_division_inteligente = False
-    if len(matches) == 1:
-        if len(matches[0].group(0).strip()) < len(s_std.strip()) and " y " in s_std:
-            run_division_inteligente = True
-    elif not matches and (" y " in s_std or "sabado" in s_std or "sábado" in s_std):
-        run_division_inteligente = True
-
-    if run_division_inteligente:
-        logger.debug("DEBUG - Aplicando división inteligente de bloques")
-        divided_matches = division_inteligente_bloques(s_std, pattern)
-        if divided_matches:
-            matches = divided_matches
-
-    if not matches:
-        logger.debug("DEBUG - No se encontraron bloques horarios")
-        return []
+    if not matches: return []
         
     normalized_blocks = []
-    block_counter = 0
-    
     for match in matches:
-        block_counter += 1
         try:
-            proportional_data = {}  # Ensure it's always defined
             day_phrase = match.group(1).strip()
-            time_start_str = match.group(2)
-            time_end_str = match.group(3)
-            original_segment = match.group(0).strip()
-            
-            tokens = re.findall(r'[a-záéíóúñ]+-[a-záéíóúñ]+|[a-záéíóúñ]+|\d+', day_phrase.lower())
-            
-            # --- CORRECCIÓN DEL ERROR DE TIPEO AQUÍ ---
-            day_words = [word for word in tokens if word and word not in ['y', 'de', 'proporcional']]
+            tokens = re.findall(r'[a-záéíóúñ]+-[a-záéíóúñ]+|[a-záéíóúñ]+|\d+', day_phrase)
+            day_words = [word for word in tokens if word not in ['y', 'de']]
             
             current_dias, proportional_data = get_day_indices(day_words)
-            
-            if not current_dias:
-                continue
-            
+            if not current_dias: continue
+
             if proportional_data and 5 in proportional_data:
                 periodicity = { "tipo": "proporcional", "frecuencia": f"{proportional_data[5]}/4", "factor": proportional_data[5] / 4.0 }
-            elif any(word in day_words for word in ["por", "medio", "quincenal"]):
+            elif any(w in day_words for w in ["por", "medio"]):
                 periodicity = { "tipo": "quincenal", "frecuencia": 2, "factor": 0.5 }
             else:
                 periodicity = { "tipo": "semanal", "frecuencia": 1, "factor": 1.0 }
             
-            start_time = format_time_to_hhmm(time_start_str)
-            end_time = format_time_to_hhmm(time_end_str)
+            start_time = format_time_to_hhmm(match.group(2))
+            end_time = format_time_to_hhmm(match.group(3))
             
-            if not start_time or not end_time:
-                continue
+            if not start_time or not end_time: continue
             
-            block_id = generate_block_id(current_dias, start_time, end_time, periodicity, block_counter)
+            block_id = generate_block_id(current_dias, start_time, end_time, periodicity, len(normalized_blocks))
             
             block_data = {
                 "id": block_id, "dias_semana": current_dias, "hora_inicio": start_time,
-                "hora_fin": end_time, "periodicidad": periodicity, "original_text_segment": original_segment,
+                "hora_fin": end_time, "periodicidad": periodicity, "original_text_segment": match.group(0).strip(),
+                "cruza_dia": start_time > end_time
             }
-            
-            if start_time > end_time:
-                block_data["cruza_dia"] = True
-            
             normalized_blocks.append(block_data)
             
         except Exception as e:
-            logger.error(f"ERROR procesando bloque {block_counter}: {match.group(0).strip()} -> {str(e)}")
-            continue
-    
+            logger.error(f"ERROR procesando bloque: {match.group(0)} -> {e}")
+            
     return normalized_blocks
 
 def calcular_resumen_horario(bloques, nombre_sede=None):
