@@ -78,6 +78,32 @@ EQUIVALENCIAS.update(EQUIVALENCIAS_MENSUALES)
 # Este paso es VITAL para que "1 sábado al mes" se reemplace antes que "sábado".
 EQUIVALENCIAS = dict(sorted(EQUIVALENCIAS.items(), key=lambda item: len(item[0]), reverse=True))
 
+DIA_RANGO_MAPPING = {
+    # Rangos largos
+    "lunes a viernes": "lunes-viernes",
+    "lunes a jueves": "lunes-jueves",
+    "martes a viernes": "martes-viernes",
+    "lunes a miércoles": "lunes-miércoles",
+    "lunes a martes": "lunes-martes",
+    "lunes a sabados": "lunes-sábado", "lunes a sábado": "lunes-sábado",
+    "lunes a domingo": "lunes-domingo",
+    # Combinaciones explícitas
+    "lunes, martes y miércoles": "lunes y martes y miércoles",
+    "lunes martes y miercoles": "lunes y martes y miércoles",
+    # Fines de semana y feriados
+    "sábado domingo feriado": "sábado y domingo y feriado",
+    "sábado feriado": "sábado y feriado",
+    "domingo feriado": "domingo y feriado",
+    # Por medio
+    "sxm": "sábado por medio",
+    "dxm": "domingo por medio",
+    "sabados por medio": "sábado por medio",
+    "sábado por medio": "sábado por medio",
+    "domingo por medio": "domingo por medio",
+    # Feriados
+    "feriados": "feriado",
+}
+
 MODALIDAD_MAP = {
     'EVENTUAL': 'eventual', 'PERÍODO DE PRUEBA': 'periodo_prueba', 'PERÍODO DE PRUEBA (JORNADA PARCIAL)': 'periodo_prueba_parcial',
     'TIEMPO COMPLETO INDETERMINADO': 'tiempo_completo_indefinido', 'TIEMPO COMPLETO PLAZO FIJO': 'tiempo_completo_plazo_fijo',
@@ -169,11 +195,14 @@ def limpiar_prefijos_horas(text: str) -> str:
 
 def apply_equivalences(text: str, equivalences: dict) -> str:
     """
-    Normaliza texto de horarios: días, conectores, periodicidades y variantes de LaV.
+    Normaliza texto de horarios:
+    - Prioriza rangos largos
+    - Respeta horarios que ya funcionaban
+    - Normaliza conectores y periodicidades
     """
     original_text = text
 
-    # variantes súper flexibles de LaV (L A V, L.A.V., L-V, etc.)
+    # Normalize variantes súper flexibles de LaV
     text = re.sub(
         r'\b(?:l\s*[\.\-]?\s*a\s*[\.\-]?\s*v)\b',
         'lunes-viernes',
@@ -181,7 +210,7 @@ def apply_equivalences(text: str, equivalences: dict) -> str:
         flags=re.IGNORECASE
     )
 
-    # Detectar "1 Sábado al mes" → "sábado mensual", "2 Domingos al mes" → "domingo mensual"
+    # Detectar "1 Sábado al mes" → "sábado mensual"
     text = re.sub(
         r'(\d+)\s*(lunes|martes|miércoles|miercoles|jueves|viernes|sábado|sabado|domingo)\s+al\s+mes',
         r'\2 mensual',
@@ -192,12 +221,13 @@ def apply_equivalences(text: str, equivalences: dict) -> str:
     # Normalizar conectores " y " para cortar bien tramos compuestos
     text = re.sub(r'\s+y\s+(?=[a-záéíóúñ])', ' Y ', text, flags=re.IGNORECASE)
 
-    # Aplicar equivalencias existentes (palabra completa), priorizando claves largas
+    # Aplicar equivalencias largas primero
     for old, new in sorted(equivalences.items(), key=lambda x: len(x[0]), reverse=True):
+        # Hacemos word boundary para no romper otras palabras
         pattern = r'\b' + re.escape(old) + r'\b'
         text = re.sub(pattern, new, text, flags=re.IGNORECASE)
 
-    logger.debug(f"DEBUG apply_equivalences - Original: '{original_text}' -> Normalizado: '{text}'")
+    logger.debug(f"DEBUG apply_equivalences_safe - Original: '{original_text}' -> Normalizado: '{text}'")
     return text
 
 def normalizar_horario_input(s: str) -> str:
@@ -503,7 +533,7 @@ def parse_schedule_string(schedule_str):
     logger.debug(f"DEBUG - Texto original: '{schedule_str}'")
     s_clean = clean_and_standardize(schedule_str)
     logger.debug(f"DEBUG - Después de clean_and_standardize: '{s_clean}'")
-    s_std = apply_equivalences(s_clean, EQUIVALENCIAS)
+    s_std = apply_equivalences(s_clean, DIA_RANGO_MAPPING)
     logger.debug(f"DEBUG - Después de apply_equivalences: '{s_std}'")
 
     # Regex mejorada: detecta días (lunes-viernes, sábado, domingo) + horarios
