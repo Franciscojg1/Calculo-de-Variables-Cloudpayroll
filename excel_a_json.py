@@ -546,18 +546,18 @@ def parse_schedule_string(schedule_str):
     logger.debug(f"DEBUG - Texto original: '{schedule_str}'")
     s_clean = clean_and_standardize(schedule_str)
     logger.debug(f"DEBUG - Después de clean_and_standardize: '{s_clean}'")
-    s_std = apply_equivalences(s_clean, DIA_RANGO_MAPPING)
+    s_std = apply_equivalences(s_clean, EQUIVALENCIAS)
     logger.debug(f"DEBUG - Después de apply_equivalences: '{s_std}'")
 
     # Regex mejorada: detecta días (lunes-viernes, sábado, domingo) + horarios
     pattern = re.compile(
-        r"((?:[a-záéíóúñ]+(?:-[a-záéíóúñ]+)?\s*)+?)"  # días, ej: lunes-viernes
-        r"\s*(?:de\s*)?"  # opcional "de"
-        r"(\d{1,2}(?:[:\.]\d{2})?)"  # hora inicio, ej: 7:30 o 7.30
-        r"\s*(?:a|-)\s*"
-        r"(\d{1,2}(?:[:\.]\d{2})?)",  # hora fin
-        re.IGNORECASE
-    )
+    r"((?:(?:[a-záéíóúñ]+|-)\s*|\d+\s*)+?)"  # Días (acepta palabras, guiones y números sueltos)
+    r"\s*(?:de\s*)?"                        # opcional "de"
+    r"(\d{1,2}(?:[:\.]\d{2})?)"              # hora inicio, ej: 7:30 o 7.30
+    r"\s*(?:a|-)\s*"
+    r"(\d{1,2}(?:[:\.]\d{2})?)",             # hora fin
+    re.IGNORECASE
+)
 
     matches = list(pattern.finditer(s_std))
     logger.debug(f"DEBUG - Bloques encontrados con finditer: {len(matches)}")
