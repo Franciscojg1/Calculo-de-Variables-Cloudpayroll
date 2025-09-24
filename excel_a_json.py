@@ -575,21 +575,43 @@ def parse_schedule_string(schedule_str):
 
             # Detectar periodicidad
             if proportional_data and 5 in proportional_data:
-                periodicity = {"tipo": "proporcional",
-                               "frecuencia": f"{proportional_data[5]}/4",
-                               "factor": proportional_data[5]/4.0}
+                periodicity = {
+                    "tipo": "proporcional",
+                    "frecuencia": f"{proportional_data[5]}/4",
+                    "factor": proportional_data[5]/4.0
+                }
+
+            # NUEVO: detectar sábados “1S”, “2S”, “3S” al mes
+            elif any(re.match(r'(\d+)[\s]*s', w, flags=re.IGNORECASE) for w in day_words):
+                for w in day_words:
+                    m = re.match(r'(\d+)[\s]*s', w, flags=re.IGNORECASE)
+                    if m:
+                        num_sabados = int(m.group(1))
+                        periodicity = {
+                            "tipo": "mensual",
+                            "frecuencia": num_sabados / 4,  # factor semanal
+                            "factor": num_sabados / 4.0
+                        }
+                        break
+
             elif any(w in day_words for w in ["mensual", "mes"]):
-                periodicity = {"tipo": "mensual",
-                               "frecuencia": 0.25,
-                               "factor": 0.25}
+                periodicity = {
+                    "tipo": "mensual",
+                    "frecuencia": 0.25,
+                    "factor": 0.25
+                }
             elif any(w in day_words for w in ["por", "medio"]):
-                periodicity = {"tipo": "quincenal",
-                               "frecuencia": 2,
-                               "factor": 0.5}
+                periodicity = {
+                    "tipo": "quincenal",
+                    "frecuencia": 2,
+                    "factor": 0.5
+                }
             else:
-                periodicity = {"tipo": "semanal",
-                               "frecuencia": 1,
-                               "factor": 1.0}
+                periodicity = {
+                    "tipo": "semanal",
+                    "frecuencia": 1,
+                    "factor": 1.0
+                }
 
             start_time = format_time_to_hhmm(match.group(2))
             end_time = format_time_to_hhmm(match.group(3))
@@ -618,7 +640,6 @@ def parse_schedule_string(schedule_str):
 
     logger.debug(f"DEBUG - Total bloques normalizados: {len(normalized_blocks)}")
     return normalized_blocks
-
 
 def calcular_resumen_horario(bloques, nombre_sede=None):
     from datetime import datetime as dt, time as tm, timedelta
