@@ -37,7 +37,7 @@ EQUIVALENCIAS = {
     "lunes a sabados": "lunes-sabado", "lunes a sabado": "lunes-sabado", "lunes a sábados": "lunes-sabado",
     "lunes a sab": "lunes-sabado",
     "lunes a domingos": "lunes-domingo", "lunes a domingo": "lunes-domingo",
-    "lunes a jueves": "lunes-juhovens", "lunes a miercoles": "lunes-miércoles", "lunes a martes": "lunes-martes",
+    "lunes a jueves": "lunes-jueves", "lunes a miercoles": "lunes-miércoles", "lunes a martes": "lunes-martes",
     "martes a viernes": "martes-viernes",
     "lunes, martes y miercoles": "lunes y martes y miércoles", "lunes martes y miercoles": "lunes y martes y miércoles",
     "sábado domingo feriado": "sábado y domingo y feriado", "sábado feriado": "sábado y feriado", "domingo feriado": "domingo y feriado",
