@@ -464,10 +464,10 @@ def parse_schedule_string(schedule_str):
     logger.debug(f"DEBUG parse_schedule_string - Con equivalencias: '{s_std}'")
 
     # --- CORRECCIÓN DEFINITIVA EN LA EXPRESIÓN REGULAR ---
-    # Este nuevo regex es más simple y robusto. Define la frase de días como "todo lo que
-    # venga antes (.+?) de un bloque de tiempo". Se ancla en el horario.
+    # Se define la "frase de días" de forma estricta: una secuencia de palabras, guiones,
+    # y/o dígitos únicos. Esto evita que consuma horarios intermedios.
     pattern = re.compile(
-        r"^\s*(?:y\s+)?(.+?)\s*(?:de)?\s+(\d{1,2}(?:[:.]?\d{2})?)\s*(?:a|-)\s*(\d{1,2}(?:[:.]?\d{2})?)", 
+        r"^\s*(?:y\s+)?((?:(?:[a-záéíóúñ\-]+|\d)(?:\s+)?)+?)\s*(?:de)?\s+(\d{1,2}(?:[:.]?\d{2})?)\s*(?:a|-)\s*(\d{1,2}(?:[:.]?\d{2})?)",
         re.IGNORECASE
     )
 
@@ -495,11 +495,11 @@ def parse_schedule_string(schedule_str):
             tokens = re.findall(r'[a-záéíóúñ]+-[a-záéíóúñ]+|[a-záéíóúñ]+|\d+', day_phrase)
             day_words = [word for word in tokens if word not in ['y', 'de']]
             
-            current_dias, proporcional_data = get_day_indices(day_words)
+            current_dias, proportional_data = get_day_indices(day_words)
             if not current_dias: continue
 
-            if proporcional_data and 5 in proporcional_data:
-                periodicity = { "tipo": "proporcional", "frecuencia": f"{proporcional_data[5]}/4", "factor": proporcional_data[5] / 4.0 }
+            if proportional_data and 5 in proportional_data:
+                periodicity = { "tipo": "proporcional", "frecuencia": f"{proportional_data[5]}/4", "factor": proportional_data[5] / 4.0 }
             elif any(w in day_words for w in ["por", "medio"]):
                 periodicity = { "tipo": "quincenal", "frecuencia": 2, "factor": 0.5 }
             else:
