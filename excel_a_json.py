@@ -188,79 +188,6 @@ def format_time_to_hhmm(time_str):
         minutes = '00'
     return f"{hours}:{minutes}"
 
-def get_day_indices(day_words):
-    """
-    Procesa palabras de días y devuelve índices de días + datos proporcionales.
-    Maneja: días individuales, rangos, y sábados proporcionales.
-    """
-    day_indices = set()
-    proportional_data = {}
-    
-    i = 0
-    while i < len(day_words):
-        word = day_words[i].strip().lower()
-        
-        # 1. DETECCIÓN DE SÁBADOS PROPORCIONALES (LÓGICA MEJORADA Y MÁS ESTRICTA)
-        if word in ["sábados", "sabados", "sábado", "sabado"] and i < len(day_words) - 1 and day_words[i+1].strip().isdigit():
-            next_word = day_words[i+1].strip()
-            proporcional_num = int(next_word)
-            
-            if 1 <= proporcional_num <= 4:
-                proportional_data[5] = proporcional_num
-                day_indices.add(5)
-                i += 2
-                continue
-
-        # 2. DETECCIÓN DE RANGOS CON "a"
-        elif word == "a" and i > 0 and i < len(day_words) - 1:
-            start_day_str = day_words[i-1].strip().lower()
-            end_day_str = day_words[i+1].strip().lower()
-            start_idx = DAY_MAP.get(start_day_str)
-            end_idx = DAY_MAP.get(end_day_str)
-            
-            if start_idx is not None and end_idx is not None:
-                start_idx, end_idx = sorted([start_idx, end_idx])
-                for j in range(start_idx, end_idx + 1):
-                    day_indices.add(j)
-                i += 2
-                continue
-            else:
-                i += 1
-                continue
-        
-        # 3. PROCESAMIENTO DE RANGOS CON GUION
-        elif '-' in word:
-            parts = word.split('-')
-            if len(parts) == 2:
-                start_day_str, end_day_str = parts[0].strip().lower(), parts[1].strip().lower()
-                start_idx, end_idx = DAY_MAP.get(start_day_str), DAY_MAP.get(end_day_str)
-                
-                if start_idx is not None and end_idx is not None:
-                    start_idx, end_idx = sorted([start_idx, end_idx])
-                    for j in range(start_idx, end_idx + 1):
-                        day_indices.add(j)
-                else:
-                    for part in parts:
-                        if isinstance(DAY_MAP.get(part.strip().lower()), int):
-                            day_indices.add(DAY_MAP.get(part.strip().lower()))
-        
-        # 4. PROCESAMIENTO DE DÍAS INDIVIDUALES
-        else:
-            idx = DAY_MAP.get(word)
-            if isinstance(idx, int):
-                day_indices.add(idx)
-            elif isinstance(idx, str):
-                for exp_word in idx.split():
-                    if DAY_MAP.get(exp_word.strip()) is not None:
-                        day_indices.add(DAY_MAP.get(exp_word.strip()))
-        
-        i += 1
-    
-    day_indices_clean = sorted([d for d in day_indices if isinstance(d, int) and 0 <= d <= 7])
-    
-    # Esta función SIEMPRE devuelve dos valores, que es lo crucial.
-    return day_indices_clean, proportional_data
-
 def generate_block_id(days, start_time, end_time, periodicity, counter):
     day_names = '_'.join([DAY_NAMES.get(d, str(d)) for d in days])
     time_part = f"{start_time.replace(':', '')}_{end_time.replace(':', '')}"
@@ -474,18 +401,92 @@ def parsear_fecha(valor: Any) -> Optional[str]:
         pass
 
     return None
+# ==============================================================================
+# BLOQUE DE CÓDIGO ÚNICO Y CORREGIDO (INCLUYE TODAS LAS FUNCIONES)
+# ==============================================================================
 
+# -- FUNCIÓN DE AYUDA 1 --
+def get_day_indices(day_words):
+    """
+    Procesa palabras de días y devuelve índices de días + datos proporcionales.
+    """
+    day_indices = set()
+    proporcional_data = {}
+    i = 0
+    while i < len(day_words):
+        word = day_words[i].strip().lower()
+        if word in ["sábados", "sabados", "sábado", "sabado"] and i < len(day_words) - 1 and day_words[i+1].strip().isdigit():
+            next_word = day_words[i+1].strip()
+            proporcional_num = int(next_word)
+            if 1 <= proporcional_num <= 4:
+                proporcional_data[5] = proporcional_num
+                day_indices.add(5)
+                i += 2
+                continue
+        elif word == "a" and i > 0 and i < len(day_words) - 1:
+            start_day_str, end_day_str = day_words[i-1].strip().lower(), day_words[i+1].strip().lower()
+            start_idx, end_idx = DAY_MAP.get(start_day_str), DAY_MAP.get(end_day_str)
+            if start_idx is not None and end_idx is not None:
+                start_idx, end_idx = sorted([start_idx, end_idx])
+                for j in range(start_idx, end_idx + 1):
+                    day_indices.add(j)
+                i += 2
+                continue
+            else:
+                i += 1
+                continue
+        elif '-' in word:
+            parts = word.split('-')
+            if len(parts) == 2:
+                start_day_str, end_day_str = parts[0].strip().lower(), parts[1].strip().lower()
+                start_idx, end_idx = DAY_MAP.get(start_day_str), DAY_MAP.get(end_day_str)
+                if start_idx is not None and end_idx is not None:
+                    start_idx, end_idx = sorted([start_idx, end_idx])
+                    for j in range(start_idx, end_idx + 1):
+                        day_indices.add(j)
+                else:
+                    for part in parts:
+                        if isinstance(DAY_MAP.get(part.strip().lower()), int):
+                            day_indices.add(DAY_MAP.get(part.strip().lower()))
+        else:
+            idx = DAY_MAP.get(word)
+            if isinstance(idx, int):
+                day_indices.add(idx)
+            elif isinstance(idx, str):
+                for exp_word in idx.split():
+                    if DAY_MAP.get(exp_word.strip()) is not None:
+                        day_indices.add(DAY_MAP.get(exp_word.strip()))
+        i += 1
+    day_indices_clean = sorted([d for d in day_indices if isinstance(d, int) and 0 <= d <= 7])
+    return day_indices_clean, proporcional_data
+
+# -- FUNCIÓN DE AYUDA 2 --
+def division_inteligente_bloques(texto, pattern):
+    """
+    División de respaldo para strings con múltiples bloques horarios.
+    """
+    bloques = []
+    partes = re.split(r'\s+y\s+', texto, flags=re.IGNORECASE)
+    for parte in partes:
+        parte = parte.strip()
+        if not parte:
+            continue
+        match = pattern.search(parte)
+        if match:
+            bloques.append(match)
+            logger.debug(f"DEBUG división_inteligente - Match encontrado: {match.group(0)}")
+    return bloques
+
+# -- FUNCIÓN PRINCIPAL --
 def parse_schedule_string(schedule_str):
     """
     Parsea un string de horario y devuelve bloques normalizados.
-    Maneja múltiples bloques, días proporcionales y diferentes periodicidades.
     """
     if not schedule_str or not isinstance(schedule_str, str):
         return []
         
     s_cleaned = clean_and_standardize(schedule_str)
     s_std = apply_equivalences(s_cleaned, EQUIVALENCIAS)
-    
     logger.debug(f"DEBUG parse_schedule_string - Original: {schedule_str}")
     logger.debug(f"DEBUG parse_schedule_string - Con equivalencias: {s_std}")
     
@@ -522,18 +523,18 @@ def parse_schedule_string(schedule_str):
     
     for match in matches:
         block_counter += 1
-        # Inicializamos la variable aquí para asegurar que exista en cada iteración.
-        proportional_data = {}
         try:
+            proportional_data = {}  # Ensure it's always defined
             day_phrase = match.group(1).strip()
             time_start_str = match.group(2)
             time_end_str = match.group(3)
             original_segment = match.group(0).strip()
             
             tokens = re.findall(r'[a-záéíóúñ]+-[a-záéíóúñ]+|[a-záéíóúñ]+|\d+', day_phrase.lower())
+            
+            # --- CORRECCIÓN DEL ERROR DE TIPEO AQUÍ ---
             day_words = [word for word in tokens if word and word not in ['y', 'de', 'proporcional']]
             
-            # La llamada a la función correcta y sincronizada es clave.
             current_dias, proportional_data = get_day_indices(day_words)
             
             if not current_dias:
@@ -569,63 +570,6 @@ def parse_schedule_string(schedule_str):
             continue
     
     return normalized_blocks
-def division_inteligente_bloques(texto, pattern):
-    """
-    División inteligente de bloques cuando el regex principal falla.
-    Maneja casos como 'lunes a viernes 7-15 y sábados 3 8-12'
-    """
-    bloques = []
-    
-    # Intentar dividir por "y" que normalmente separa bloques
-    partes = re.split(r'\s+y\s+', texto, flags=re.IGNORECASE)
-    
-    for parte in partes:
-        parte = parte.strip()
-        if not parte:
-            continue
-        
-        # Buscar match con el patrón principal
-        match = pattern.search(parte)
-        if match:
-            bloques.append(match)
-            logger.debug(f"DEBUG división_inteligente - Match encontrado: {match.group(0)}")
-        else:
-            # Búsqueda más agresiva de horarios
-            horario_match = re.search(
-                r'(\d{1,2}(?:[:.]?\d{2})?)\s*(?:a|-|a\s+las?)\s*(\d{1,2}(?:[:.]?\d{2})?)', 
-                parte
-            )
-            
-            if horario_match:
-                # Reconstruir bloque manualmente
-                start_time, end_time = horario_match.groups()
-                dia_part = parte[:horario_match.start()].strip()
-                
-                if not dia_part:
-                    dia_part = "sábados"  # Default para bloques sin días explícitos
-                
-                bloque_completo = f"{dia_part} {start_time} a {end_time}"
-                
-                # Crear mock match
-                class MockMatch:
-                    def __init__(self, bloque, dia_part, start, end):
-                        self._bloque = bloque
-                        self._dia_part = dia_part
-                        self._start = start
-                        self._end = end
-                    
-                    def group(self, n):
-                        if n == 0: return self._bloque
-                        if n == 1: return self._dia_part
-                        if n == 2: return self._start
-                        if n == 3: return self._end
-                        return ""
-                
-                mock_match = MockMatch(bloque_completo, dia_part, start_time, end_time)
-                bloques.append(mock_match)
-                logger.debug(f"DEBUG división_inteligente - Bloque reconstruido: {bloque_completo}")
-    
-    return bloques
 
 def calcular_resumen_horario(bloques, nombre_sede=None):
     from datetime import datetime as dt, time as tm, timedelta
