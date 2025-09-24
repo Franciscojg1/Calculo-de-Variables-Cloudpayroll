@@ -205,7 +205,6 @@ def limpiar_prefijos_horas(text: str) -> str:
     return re.sub(r'^\s*\d+\s*h?s?\b\s*', '', text, flags=re.IGNORECASE)
 
 def apply_equivalences(text: str, equivalences: dict) -> str:
-    logger.critical("--- ¡LA NUEVA VERSIÓN DE LA FUNCIÓN SE ESTÁ EJECUTANDO! ---")
     """
     Normaliza texto de horarios:
     - Prioriza rangos largos
