@@ -457,32 +457,34 @@ def division_inteligente_bloques(texto, pattern):
 # --- FUNCIÓN PRINCIPAL: parse_schedule_string (VERSIÓN FINAL) ---
 def parse_schedule_string(schedule_str):
     """
-    Parsea un string de horario y devuelve bloques normalizados.
+    Parsea un string de horario y devuelve bloques normalizados usando un método iterativo.
     """
     if not schedule_str: return []
     s_std = apply_equivalences(clean_and_standardize(schedule_str), EQUIVALENCIAS)
     logger.debug(f"DEBUG parse_schedule_string - Con equivalencias: '{s_std}'")
-    
-    # El regex que permite números en la frase del día es correcto.
-    pattern = re.compile(r"((?:[a-záéíóúñ\d\-]+(?:\s+y\s+|\s+)?)+?)(?:\s+de)?\s+(\d{1,2}(?:[:.]?\d{2})?)\s*(?:a|-)\s*(\d{1,2}(?:[:.]?\d{2})?)", re.IGNORECASE)
-    
-    matches = list(pattern.finditer(s_std))
-    
-    # --- LÓGICA DE DIVISIÓN RESTAURADA Y CORREGIDA ---
-    # Esta es la lógica robusta que funciona para ambos casos.
-    # Decide si usar la división inteligente basándose en si el match cubre todo el string.
-    run_division_inteligente = False
-    if len(matches) == 1 and len(matches[0].group(0).strip()) < len(s_std.strip()) and " y " in s_std:
-        run_division_inteligente = True
-    elif not matches and " y " in s_std:
-        run_division_inteligente = True
-    # Si la división inteligente no se activa, finditer encontrará todos los bloques
-    # separados por espacios por sí solo.
 
-    if run_division_inteligente:
-         logger.debug("DEBUG - Se detectó 'y', aplicando división inteligente de bloques...")
-         if divided_matches := division_inteligente_bloques(s_std, pattern):
-            matches = divided_matches
+    # Regex para encontrar un bloque de horario COMPLETO al PRINCIPIO de un string.
+    # Acepta una 'y' opcional al inicio para los bloques subsecuentes.
+    pattern = re.compile(
+        r"^\s*(?:y\s+)?((?:[a-záéíóúñ\d\-]+(?:\s+)?)+?)\s*(?:de)?\s+(\d{1,2}(?:[:.]?\d{2})?)\s*(?:a|-)\s*(\d{1,2}(?:[:.]?\d{2})?)", 
+        re.IGNORECASE
+    )
+
+    matches = []
+    remaining_str = s_std
+    # Bucle que consume el string progresivamente
+    while remaining_str:
+        match = pattern.search(remaining_str)
+        if match:
+            matches.append(match)
+            # Corta el string, eliminando la parte ya procesada
+            remaining_str = remaining_str[match.end():].strip()
+        else:
+            # Si no se encuentran más horarios, se detiene el bucle
+            logger.debug(f"DEBUG - No se encontraron más bloques en: '{remaining_str}'")
+            break
+            
+    logger.debug(f"DEBUG - Se encontraron {len(matches)} bloques con el parser iterativo.")
 
     if not matches:
         logger.debug("DEBUG - No se encontraron bloques horarios.")
@@ -495,11 +497,11 @@ def parse_schedule_string(schedule_str):
             tokens = re.findall(r'[a-záéíóúñ]+-[a-záéíóúñ]+|[a-záéíóúñ]+|\d+', day_phrase)
             day_words = [word for word in tokens if word not in ['y', 'de']]
             
-            current_dias, proporcional_data = get_day_indices(day_words)
+            current_dias, proportional_data = get_day_indices(day_words)
             if not current_dias: continue
 
-            if proporcional_data and 5 in proporcional_data:
-                periodicity = { "tipo": "proporcional", "frecuencia": f"{proporcional_data[5]}/4", "factor": proporcional_data[5] / 4.0 }
+            if proportional_data and 5 in proportional_data:
+                periodicity = { "tipo": "proporcional", "frecuencia": f"{proportional_data[5]}/4", "factor": proportional_data[5] / 4.0 }
             elif any(w in day_words for w in ["por", "medio"]):
                 periodicity = { "tipo": "quincenal", "frecuencia": 2, "factor": 0.5 }
             else:
