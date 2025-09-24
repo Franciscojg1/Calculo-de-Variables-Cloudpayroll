@@ -55,6 +55,17 @@ EQUIVALENCIAS_EXTRA = {
     "3sab": "y sábados 3", "2sab": "y sábados 2", "1sab": "y sábados 1",
     "3sáb": "y sábados 3", "2sáb": "y sábados 2", "1sáb": "y sábados 1",
     "3 s": "y sábados 3", "2 s": "y sábados 2", "1 s": "y sábados 1",
+    # ===== INICIO DE LA SOLUCIÓN DEFINITIVA =====
+    # Reemplaza letras de día sueltas por un bloque con conector "y".
+    # ¡Los espacios son muy importantes!
+    " s ": " y sábado ",
+    " d ": " y domingo ",
+    " l ": " y lunes ",
+    " m ": " y martes ",
+    " x ": " y miércoles ",  # Usamos X para evitar conflicto con la M de martes
+    " j ": " y jueves ",
+    " v ": " y viernes ",
+    # ===== FIN DE LA SOLUCIÓN DEFINITIVA =====
 }
 
 # DICCIONARIO PARA CASOS MENSUALES
@@ -217,13 +228,6 @@ def apply_equivalences(text: str, equivalences: dict) -> str:
         r'\2 mensual',
         text,
         flags=re.IGNORECASE
-    )
-
-    # Detectar patrones tipo "3 S" → "3S"
-    text = re.sub(
-    r'\b(?<![:\.\-\d])(\d+)\s*[sS]\b',  # <-- REGEX MEJORADA
-    lambda m: f"{m.group(1)}S",
-    text
     )
 
     # Normalizar conectores " y " para cortar bien tramos compuestos
