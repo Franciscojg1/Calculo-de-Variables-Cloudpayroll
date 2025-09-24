@@ -177,11 +177,9 @@ def apply_equivalences(text: str, equivalences: dict) -> str:
         flags=re.IGNORECASE
     )
 
-    # --- NUEVO: Normalización de expresiones mensuales ---
-    text = re.sub(r"\b1\s+s[áa]bado\s+al\s+mes\b", "sábado mensual", text, flags=re.IGNORECASE)
-    text = re.sub(r"\bun\s+s[áa]bado\s+al\s+mes\b", "sábado mensual", text, flags=re.IGNORECASE)
-    text = re.sub(r"\b1\s+domingo\s+al\s+mes\b", "domingo mensual", text, flags=re.IGNORECASE)
-    text = re.sub(r"\bun\s+domingo\s+al\s+mes\b", "domingo mensual", text, flags=re.IGNORECASE)
+    # 🔹 Normalización de conectores " y " → para cortar bien tramos compuestos
+    # Ej: "lunes a viernes ... y sábados ..." => "lunes a viernes ... Y sábados ..."
+    text = re.sub(r'\s+y\s+(?=[a-záéíóúñ])', ' Y ', text, flags=re.IGNORECASE)
 
     # resto de equivalencias (palabra completa), priorizando claves largas
     for old, new in sorted(equivalences.items(), key=lambda x: len(x[0]), reverse=True):
