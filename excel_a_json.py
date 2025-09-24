@@ -27,12 +27,17 @@ DAY_NAMES = {
     4: "viernes", 5: "sábado", 6: "domingo", 7: "feriado"
 }
 
+# ==============================================================================
+# BLOQUE COMPLETO Y DEFINITIVO PARA LA CONFIGURACIÓN DE DICCIONARIOS
+# ==============================================================================
+
+# DICCIONARIO BASE
 EQUIVALENCIAS = {
     "lunes a viernes": "lunes-viernes", "l a v": "lunes-viernes", "l-v": "lunes-viernes",
     "lunes a sabados": "lunes-sabado", "lunes a sabado": "lunes-sabado", "lunes a sábados": "lunes-sabado",
     "lunes a sab": "lunes-sabado",
     "lunes a domingos": "lunes-domingo", "lunes a domingo": "lunes-domingo",
-    "lunes a jueves": "lunes-jueves", "lunes a miercoles": "lunes-miércoles", "lunes a martes": "lunes-martes",
+    "lunes a jueves": "lunes-juhovens", "lunes a miercoles": "lunes-miércoles", "lunes a martes": "lunes-martes",
     "martes a viernes": "martes-viernes",
     "lunes, martes y miercoles": "lunes y martes y miércoles", "lunes martes y miercoles": "lunes y martes y miércoles",
     "sábado domingo feriado": "sábado y domingo y feriado", "sábado feriado": "sábado y feriado", "domingo feriado": "domingo y feriado",
@@ -41,47 +46,36 @@ EQUIVALENCIAS = {
     "feriados": "feriado",
 }
 
+# DICCIONARIO DE ABREVIACIONES GENERALES
 EQUIVALENCIAS_EXTRA = {
-    "lav": "lunes-viernes",
-    "la v": "lunes-viernes", 
-    "l a v": "lunes-viernes",
-    "l-v": "lunes-viernes",
-    "l/v": "lunes-viernes",
-    "l v": "lunes-viernes",
-    "l a j": "lunes-jueves",
-    "la j": "lunes-jueves",
-    
-    # CORREGIDO: Solo convertir "3S" a "y sábados 3" sin duplicar horarios
-    "3s": "y sábados 3",
-    "2s": "y sábados 2", 
-    "1s": "y sábados 1",
-    "3sab": "y sábados 3",
-    "2sab": "y sábados 2",
-    "1sab": "y sábados 1",
-    "3sáb": "y sábados 3",
-    "2sáb": "y sábados 2", 
-    "1sáb": "y sábados 1",
-    "3 s": "y sábados 3",
-    "2 s": "y sábados 2",
-    "1 s": "y sábados 1",
-    "1 sábado al mes": "y sábados 1",
-    "2 sábados al mes": "y sábados 2",
-    "3 sábados al mes": "y sábados 3",
-    "1 sabado al mes": "y sabados 1",
-    "2 sabados al mes": "y sabados 2",
-    "3 sabados al mes": "y sabados 3",
-    # Abreviación "sab"
-    "1 sab al mes": "y sabados 1",
-    "2 sab al mes": "y sabados 2",
-    "3 sab al mes": "y sabados 3",
-    # Abreviación de una letra "s"
-    "1 s al mes": "y sabados 1",
-    "2 s al mes": "y sabados 2",
-    "3 s al mes": "y sabados 3",
+    "lav": "lunes-viernes", "la v": "lunes-viernes", "l a v": "lunes-viernes",
+    "l-v": "lunes-viernes", "l/v": "lunes-viernes", "l v": "lunes-viernes",
+    "l a j": "lunes-jueves", "la j": "lunes-jueves",
+    "3s": "y sábados 3", "2s": "y sábados 2", "1s": "y sábados 1",
+    "3sab": "y sábados 3", "2sab": "y sábados 2", "1sab": "y sábados 1",
+    "3sáb": "y sábados 3", "2sáb": "y sábados 2", "1sáb": "y sábados 1",
+    "3 s": "y sábados 3", "2 s": "y sábados 2", "1 s": "y sábados 1",
 }
 
-# después de definir EQUIVALENCIAS original:
+# DICCIONARIO PARA CASOS MENSUALES
+EQUIVALENCIAS_MENSUALES = {
+    # Versión completa (con y sin acento)
+    "1 sábado al mes": "sábados 1", "2 sábados al mes": "sábados 2", "3 sábados al mes": "sábados 3",
+    "1 sabado al mes": "sabados 1", "2 sabados al mes": "sabados 2", "3 sabados al mes": "sabados 3",
+    # Abreviación "sab"
+    "1 sab al mes": "sabados 1", "2 sab al mes": "sabados 2", "3 sab al mes": "sabados 3",
+    # Abreviación de una letra "s"
+    "1 s al mes": "sabados 1", "2 s al mes": "sabados 2", "3 s al mes": "sabados 3",
+}
+
+# --- PASOS FINALES Y CRUCIALES ---
+
+# 1. Unificar todos los diccionarios en el principal
 EQUIVALENCIAS.update(EQUIVALENCIAS_EXTRA)
+EQUIVALENCIAS.update(EQUIVALENCIAS_MENSUALES)
+
+# 2. Re-ordenar el diccionario final por longitud de la clave (de más larga a más corta)
+# Este paso es VITAL para que "1 sábado al mes" se reemplace antes que "sábado".
 EQUIVALENCIAS = dict(sorted(EQUIVALENCIAS.items(), key=lambda item: len(item[0]), reverse=True))
 
 
