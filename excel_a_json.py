@@ -463,24 +463,22 @@ def parse_schedule_string(schedule_str):
     s_std = apply_equivalences(clean_and_standardize(schedule_str), EQUIVALENCIAS)
     logger.debug(f"DEBUG parse_schedule_string - Con equivalencias: '{s_std}'")
 
-    # Regex para encontrar un bloque de horario COMPLETO al PRINCIPIO de un string.
-    # Acepta una 'y' opcional al inicio para los bloques subsecuentes.
+    # --- CORRECCIÓN DEFINITIVA EN LA EXPRESIÓN REGULAR ---
+    # Este nuevo regex es más simple y robusto. Define la frase de días como "todo lo que
+    # venga antes (.+?) de un bloque de tiempo". Se ancla en el horario.
     pattern = re.compile(
-        r"^\s*(?:y\s+)?((?:[a-záéíóúñ\d\-]+(?:\s+)?)+?)\s*(?:de)?\s+(\d{1,2}(?:[:.]?\d{2})?)\s*(?:a|-)\s*(\d{1,2}(?:[:.]?\d{2})?)", 
+        r"^\s*(?:y\s+)?(.+?)\s*(?:de)?\s+(\d{1,2}(?:[:.]?\d{2})?)\s*(?:a|-)\s*(\d{1,2}(?:[:.]?\d{2})?)", 
         re.IGNORECASE
     )
 
     matches = []
     remaining_str = s_std
-    # Bucle que consume el string progresivamente
     while remaining_str:
         match = pattern.search(remaining_str)
         if match:
             matches.append(match)
-            # Corta el string, eliminando la parte ya procesada
             remaining_str = remaining_str[match.end():].strip()
         else:
-            # Si no se encuentran más horarios, se detiene el bucle
             logger.debug(f"DEBUG - No se encontraron más bloques en: '{remaining_str}'")
             break
             
@@ -497,11 +495,11 @@ def parse_schedule_string(schedule_str):
             tokens = re.findall(r'[a-záéíóúñ]+-[a-záéíóúñ]+|[a-záéíóúñ]+|\d+', day_phrase)
             day_words = [word for word in tokens if word not in ['y', 'de']]
             
-            current_dias, proportional_data = get_day_indices(day_words)
+            current_dias, proporcional_data = get_day_indices(day_words)
             if not current_dias: continue
 
-            if proportional_data and 5 in proportional_data:
-                periodicity = { "tipo": "proporcional", "frecuencia": f"{proportional_data[5]}/4", "factor": proportional_data[5] / 4.0 }
+            if proporcional_data and 5 in proporcional_data:
+                periodicity = { "tipo": "proporcional", "frecuencia": f"{proporcional_data[5]}/4", "factor": proporcional_data[5] / 4.0 }
             elif any(w in day_words for w in ["por", "medio"]):
                 periodicity = { "tipo": "quincenal", "frecuencia": 2, "factor": 0.5 }
             else:
@@ -525,7 +523,6 @@ def parse_schedule_string(schedule_str):
             logger.error(f"ERROR procesando bloque: {match.group(0)} -> {e}")
             
     return normalized_blocks
-
 def calcular_resumen_horario(bloques, nombre_sede=None):
     from datetime import datetime as dt, time as tm, timedelta
     
