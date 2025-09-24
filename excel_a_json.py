@@ -170,13 +170,24 @@ def limpiar_prefijos_horas(text: str) -> str:
 
 def apply_equivalences(text: str, equivalences: dict) -> str:
     # variantes súper flexibles de LaV (L A V, L.A.V., L-V, etc.)
-    text = re.sub(r'\b(?:l\s*[\.\-]?\s*a\s*[\.\-]?\s*v)\b',
-                  'lunes-viernes', text, flags=re.IGNORECASE)
+    text = re.sub(
+        r'\b(?:l\s*[\.\-]?\s*a\s*[\.\-]?\s*v)\b',
+        'lunes-viernes',
+        text,
+        flags=re.IGNORECASE
+    )
+
+    # --- NUEVO: Normalización de expresiones mensuales ---
+    text = re.sub(r"\b1\s+s[áa]bado\s+al\s+mes\b", "sábado mensual", text, flags=re.IGNORECASE)
+    text = re.sub(r"\bun\s+s[áa]bado\s+al\s+mes\b", "sábado mensual", text, flags=re.IGNORECASE)
+    text = re.sub(r"\b1\s+domingo\s+al\s+mes\b", "domingo mensual", text, flags=re.IGNORECASE)
+    text = re.sub(r"\bun\s+domingo\s+al\s+mes\b", "domingo mensual", text, flags=re.IGNORECASE)
 
     # resto de equivalencias (palabra completa), priorizando claves largas
     for old, new in sorted(equivalences.items(), key=lambda x: len(x[0]), reverse=True):
         pattern = r'\b' + re.escape(old) + r'\b'
         text = re.sub(pattern, new, text, flags=re.IGNORECASE)
+
     return text
 
 def normalizar_horario_input(s: str) -> str:
@@ -475,15 +486,17 @@ def parse_schedule_string(schedule_str):
     """
     Parsea un string de horario y devuelve bloques normalizados.
     """
-    if not schedule_str: return []
+    if not schedule_str:
+        return []
+
     s_std = apply_equivalences(clean_and_standardize(schedule_str), EQUIVALENCIAS)
     logger.debug(f"DEBUG parse_schedule_string - Con equivalencias: '{s_std}'")
     
     # Regex final: no codicioso para permitir que finditer separe bloques por espacios.
     pattern = re.compile(
-    r"((?:[a-záéíóúñ\-]+\s*)+)\s*(\d{1,2}(?::?\d{2})?)\s*(?:a|-)\s*(\d{1,2}(?::?\d{2})?)",
-    re.IGNORECASE
-)
+        r"((?:[a-záéíóúñ\-]+\s*)+)\s*(\d{1,2}(?::?\d{2})?)\s*(?:a|-)\s*(\d{1,2}(?::?\d{2})?)",
+        re.IGNORECASE
+    )
     
     # Estrategia Híbrida:
     # 1. Intentar encontrar todos los bloques con finditer (ideal para bloques separados por espacios).
@@ -500,6 +513,7 @@ def parse_schedule_string(schedule_str):
         
     logger.debug(f"DEBUG - Se encontraron {len(matches)} bloques para procesar.")
     normalized_blocks = []
+    
     for match in matches:
         try:
             day_phrase = match.group(1).strip()
@@ -507,32 +521,59 @@ def parse_schedule_string(schedule_str):
             day_words = [word for word in tokens if word not in ['y', 'de']]
             
             current_dias, proportional_data = get_day_indices(day_words)
-            if not current_dias: continue
+            if not current_dias:
+                continue
 
+            # --- Periodicidad ---
             if proportional_data and 5 in proportional_data:
-                periodicity = { "tipo": "proporcional", "frecuencia": f"{proportional_data[5]}/4", "factor": proportional_data[5] / 4.0 }
+                periodicity = {
+                    "tipo": "proporcional",
+                    "frecuencia": f"{proportional_data[5]}/4",
+                    "factor": proportional_data[5] / 4.0
+                }
+            elif any(w in day_words for w in ["mensual", "mes"]):
+                periodicity = {
+                    "tipo": "mensual",
+                    "frecuencia": 1/4,
+                    "factor": 0.25
+                }
             elif any(w in day_words for w in ["por", "medio"]):
-                periodicity = { "tipo": "quincenal", "frecuencia": 2, "factor": 0.5 }
+                periodicity = {
+                    "tipo": "quincenal",
+                    "frecuencia": 2,
+                    "factor": 0.5
+                }
             else:
-                periodicity = { "tipo": "semanal", "frecuencia": 1, "factor": 1.0 }
-            
+                periodicity = {
+                    "tipo": "semanal",
+                    "frecuencia": 1,
+                    "factor": 1.0
+                }
+
             start_time = format_time_to_hhmm(match.group(2))
             end_time = format_time_to_hhmm(match.group(3))
             
-            if not start_time or not end_time: continue
+            if not start_time or not end_time:
+                continue
             
             block_id = generate_block_id(current_dias, start_time, end_time, periodicity, len(normalized_blocks))
             
             block_data = {
-                "id": block_id, "dias_semana": current_dias, "hora_inicio": start_time,
-                "hora_fin": end_time, "periodicidad": periodicity, "original_text_segment": match.group(0).strip(),
+                "id": block_id,
+                "dias_semana": current_dias,
+                "hora_inicio": start_time,
+                "hora_fin": end_time,
+                "periodicidad": periodicity,
+                "original_text_segment": match.group(0).strip(),
                 "cruza_dia": start_time > end_time
             }
             normalized_blocks.append(block_data)
+        
         except Exception as e:
             logger.error(f"ERROR procesando bloque: {match.group(0)} -> {e}")
             
     return normalized_blocks
+
 def calcular_resumen_horario(bloques, nombre_sede=None):
     from datetime import datetime as dt, time as tm, timedelta
     
