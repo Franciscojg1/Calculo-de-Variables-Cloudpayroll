@@ -661,7 +661,7 @@ def calcular_resumen_horario(bloques, nombre_sede=None):
     total_horas_nocturnas = 0.0
     dias_trabajo = set()
     tiene_nocturnidad = False
-    bloques_por_dia = {i: [] for i in range(8)}
+    bloques_por_dia = {i: [] for i in range(8)} # Usamos 8 para feriados también
     detalle_nocturno = {'horario_nocturno': '22:00-06:00', 'total_horas': 0.0, 'por_dia': {}}
     HORA_INICIO_NOCTURNA = tm(22, 0)
     HORA_FIN_NOCTURNA = tm(6, 0)
@@ -680,41 +680,39 @@ def calcular_resumen_horario(bloques, nombre_sede=None):
 
             # --- LÓGICA DE CÁLCULO DE HORAS NOCTURNAS ---
             horas_noct = 0.0
+            # (El resto de la lógica de nocturnidad permanece igual...)
             temp_dt_inicio = dt.combine(dt.today(), h_inicio)
             temp_dt_fin = dt.combine(dt.today(), h_fin)
-
-            if cruza_dia:
-                temp_dt_fin += timedelta(days=1)
-
+            if cruza_dia: temp_dt_fin += timedelta(days=1)
             temp_dt_nocturna_inicio = dt.combine(dt.today(), HORA_INICIO_NOCTURNA)
             temp_dt_nocturna_fin = dt.combine(dt.today() + timedelta(days=1), HORA_FIN_NOCTURNA)
-
             overlap_start = max(temp_dt_inicio, temp_dt_nocturna_inicio)
             overlap_end = min(temp_dt_fin, temp_dt_nocturna_fin)
-
             if overlap_start < overlap_end:
                 overlap_duration = overlap_end - overlap_start
                 horas_noct = overlap_duration.total_seconds() / 3600
                 tiene_nocturnidad = True
 
-            # CALCULAR FACTOR
-            factor = bloque['periodicidad'].get('factor', 0.5 if bloque['periodicidad']['tipo'] == 'quincenal' else 1.0)
+            factor = bloque['periodicidad'].get('factor', 1.0)
             dias = set(bloque['dias_semana'])
             cantidad_dias = len(dias)
-
+            
+            # ===== INICIO DE LA CORRECCIÓN =====
+            # Se calcula una sola vez por bloque
+            horas_semanales_bloque = round(duracion_total * factor, 2)
+            
+            # Bucle para añadir el bloque a CADA DÍA correspondiente
             for dia in dias:
                 dias_trabajo.add(dia)
-
-            # CALCULAR HORAS SEMANALES CON FACTOR
-            horas_semanales_bloque = round(duracion_total * factor, 2)
-            bloques_por_dia[dia].append({
-                'inicio': bloque['hora_inicio'],
-                'fin': bloque['hora_fin'],
-                'duracion_total': round(duracion_total, 2),
-                'horas_nocturnas': round(horas_noct, 2),
-                'periodicidad': bloque['periodicidad']['tipo'],
-                'horas_semanales': horas_semanales_bloque,
-            })
+                bloques_por_dia[dia].append({
+                    'inicio': bloque['hora_inicio'],
+                    'fin': bloque['hora_fin'],
+                    'duracion_total': round(duracion_total, 2),
+                    'horas_nocturnas': round(horas_noct, 2),
+                    'periodicidad': bloque['periodicidad']['tipo'],
+                    'horas_semanales': horas_semanales_bloque,
+                })
+            # ===== FIN DE LA CORRECCIÓN =====
 
             total_horas += duracion_total * cantidad_dias * factor
             total_horas_nocturnas += horas_noct * cantidad_dias * factor
@@ -722,13 +720,12 @@ def calcular_resumen_horario(bloques, nombre_sede=None):
         except Exception as e:
             continue
 
-    # Limpiar días sin bloques
+    # (El resto de la función para generar el resultado final permanece igual...)
     bloques_por_dia = {k: v for k, v in bloques_por_dia.items() if v}
-
     resultado = {
         'total_horas_semanales': round(total_horas, 2),
         'total_horas_nocturnas': round(total_horas_nocturnas, 2),
-        'dias_trabajo': sorted(dias_trabajo),
+        'dias_trabajo': sorted(list(dias_trabajo)),
         'tiene_nocturnidad': tiene_nocturnidad,
         'detalle_nocturnidad': {
             'horario_nocturno': '22:00-06:00',
@@ -743,7 +740,6 @@ def calcular_resumen_horario(bloques, nombre_sede=None):
             dia: bloques_por_dia[dia] for dia in sorted(dias_trabajo) if dia in bloques_por_dia
         }
     }
-
     if nombre_sede is not None:
         resultado['sede'] = nombre_sede.strip().upper()
 
