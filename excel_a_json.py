@@ -64,6 +64,20 @@ EQUIVALENCIAS_EXTRA = {
     "3 s": "y sábados 3",
     "2 s": "y sábados 2",
     "1 s": "y sábados 1",
+    "1 sábado al mes": "sábados 1",
+    "2 sábados al mes": "sábados 2",
+    "3 sábados al mes": "sábados 3",
+    "1 sabado al mes": "sabados 1",
+    "2 sabados al mes": "sabados 2",
+    "3 sabados al mes": "sabados 3",
+    # Abreviación "sab"
+    "1 sab al mes": "sabados 1",
+    "2 sab al mes": "sabados 2",
+    "3 sab al mes": "sabados 3",
+    # Abreviación de una letra "s"
+    "1 s al mes": "sabados 1",
+    "2 s al mes": "sabados 2",
+    "3 s al mes": "sabados 3",
 }
 
 # después de definir EQUIVALENCIAS original:

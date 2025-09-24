@@ -1811,8 +1811,8 @@ def calcular_extension_horaria(legajo: Dict[str, Any], v239: float) -> Optional[
 def calcular_dias_especiales(legajo: Dict[str, Any], v1242: int) -> Optional[int]:
     """
     Calcula la variable 1131 - Días mensuales especiales.
-    Aplica validaciones específicas, incluyendo un caso especial para horarios
-    de fin de semana/feriado ("sadofe").
+    Aplica validaciones específicas, incluyendo casos especiales para horarios
+    de fin de semana/feriado ("sadofe") y Lunes-Miércoles.
     """
     id_legajo = legajo.get('id_legajo', 'N/A')
 
@@ -1820,31 +1820,34 @@ def calcular_dias_especiales(legajo: Dict[str, Any], v1242: int) -> Optional[int
         # Acceso seguro y normalización
         datos = legajo.get("datos_personales", {})
         puesto = normalizar_texto(datos.get("puesto"))
-        
-        # --- ¡CORRECCIÓN AQUÍ! ---
-        # Obtener los días de la semana desde el "resumen" del horario
         dias_semana_set = set(legajo.get("horario", {}).get("resumen", {}).get("dias_trabajo", []))
 
         # --- Logging para depuración ---
         logger.debug(f"DEBUG: Legajo {id_legajo}: Evaluando condiciones para V1131. Puesto normalizado='{puesto}'.")
-        logger.debug(f"DEBUG: Legajo {id_legajo}: Días de la semana detectados: {dias_semana_set}") # Nuevo log para ver qué días detectó
+        logger.debug(f"DEBUG: Legajo {id_legajo}: Días de la semana detectados: {dias_semana_set}")
         logger.debug(f"DEBUG: Legajo {id_legajo}: ¿Días semana son Sadofe ([5, 6, 7])? -> {dias_semana_set == {5, 6, 7}}")
+        # --- Nuevo log para depuración del caso Lu-Ma-Mi ---
+        logger.debug(f"DEBUG: Legajo {id_legajo}: ¿Días semana son Lu-Ma-Mi ([0, 1, 2])? -> {dias_semana_set == {0, 1, 2}}")
         logger.debug(f"DEBUG: Legajo {id_legajo}: ¿V1242 < 22? ({v1242} < 22) -> {v1242 < 22}")
         logger.debug(f"DEBUG: Legajo {id_legajo}: ¿Puesto '{puesto}' en valores_profesionales_para_comparacion? -> {puesto in valores_profesionales_para_comparacion}")
         logger.debug(f"DEBUG: Legajo {id_legajo}: ¿El día '7' (feriado) está en dias_semana {dias_semana_set}? -> {7 in dias_semana_set}")
 
-
-        # --- Nueva Condición Especial "Sadofe" ---
-        # Si los días de la semana son exactamente Sábado (5), Domingo (6) y Feriado (7)
+        # --- Condición Especial "Sadofe" ---
         if dias_semana_set == {5, 6, 7}:
             logger.info(f"Legajo {id_legajo}: V1131 APLICA por horario Sadofe ([5,6,7]). Retorna 10.")
-            return 10 # Retorna 10 específicamente para este caso
+            return 10
             
-        # --- Otras Condiciones (solo se evalúan si no se cumplió la Sadofe) ---
+        # --- NUEVA CONDICIÓN Lu-Ma-Mi ---
+        # Si los días de la semana son exactamente Lunes (0), Martes (1) y Miércoles (2)
+        elif dias_semana_set == {0, 1, 2}:
+            logger.info(f"Legajo {id_legajo}: V1131 APLICA por horario Lu-Ma-Mi ([0,1,2]). Retorna 10.")
+            return 10 # Retorna 10 específicamente para este caso
+
+        # --- Otras Condiciones (solo se evalúan si no se cumplió ninguna de las condiciones especiales) ---
         if (
             v1242 < 22
             or puesto in valores_profesionales_para_comparacion
-            or 7 in dias_semana_set # La condición de feriado general se mantiene aquí
+            or 7 in dias_semana_set
         ):
             logger.info(f"Legajo {id_legajo}: V1131 APLICA por otras condiciones. Retorna v1242 ({v1242}).")
             return v1242
