@@ -418,34 +418,50 @@ def parsear_fecha(valor: Any) -> Optional[str]:
 # Reemplaza tus funciones existentes con este bloque completo.
 # ==============================================================================
 
-# --- FUNCIÓN DE AYUDA 1: get_day_indices (VERSIÓN FINAL) ---
+# ==============================================================================
+# BLOQUE DE FUNCIONES FINAL, ESTABLE Y AUDITADO
+# Reemplaza tus tres funciones de parseo con este bloque.
+# ==============================================================================
+
+# --- FUNCIÓN DE AYUDA 1: get_day_indices (VERSIÓN COMPLETA) ---
 def get_day_indices(day_words):
     """
     Procesa palabras de días y devuelve índices de días + datos proporcionales.
+    Maneja días individuales, rangos con guion y rangos con "a".
     """
     day_indices, proportional_data = set(), {}
     i = 0
     while i < len(day_words):
-        word = day_words[i]
+        word = day_words[i].strip().lower()
+        # Caso 1: Sábados proporcionales (ej: "sábados 1")
         if word in ["sábado", "sabado", "sábados"] and i + 1 < len(day_words) and day_words[i+1].isdigit():
             num = int(day_words[i+1])
             if 1 <= num <= 4:
                 proportional_data[5], day_indices = num, day_indices.union({5})
                 i += 2
                 continue
+        # Caso 2: Rangos con guion (ej: "lunes-viernes")
         elif '-' in word:
             parts = word.split('-')
             if len(parts) == 2 and (start_idx := DAY_MAP.get(parts[0])) is not None and (end_idx := DAY_MAP.get(parts[1])) is not None:
                 day_indices.update(range(min(start_idx, end_idx), max(start_idx, end_idx) + 1))
+        # Caso 3: Rangos con "a" (ej: "lunes a viernes") - LÓGICA RESTAURADA
+        elif word == "a" and i > 0 and i < len(day_words) - 1:
+            start_word, end_word = day_words[i-1], day_words[i+1]
+            if (start_idx := DAY_MAP.get(start_word)) is not None and (end_idx := DAY_MAP.get(end_word)) is not None:
+                 day_indices.update(range(min(start_idx, end_idx), max(start_idx, end_idx) + 1))
+                 # Como 'a' agrupa al anterior y al siguiente, no sumamos 'i' aquí,
+                 # el bucle lo hará por nosotros.
+        # Caso 4: Días individuales
         elif (idx := DAY_MAP.get(word)) is not None:
             day_indices.add(idx)
         i += 1
     return sorted(list(day_indices)), proportional_data
 
-# --- FUNCIÓN DE AYUDA 2: division_inteligente_bloques (VERSIÓN FINAL) ---
+# --- FUNCIÓN DE AYUDA 2: division_inteligente_bloques (SIN CAMBIOS) ---
 def division_inteligente_bloques(texto, pattern):
     """
-    División de respaldo para strings con múltiples bloques horarios.
+    División de respaldo para strings con múltiples bloques horarios separados por "y".
     """
     bloques = []
     partes = re.split(r'\s+y\s+', texto, flags=re.IGNORECASE)
@@ -454,43 +470,32 @@ def division_inteligente_bloques(texto, pattern):
             bloques.append(match)
     return bloques
 
+# --- FUNCIÓN PRINCIPAL: parse_schedule_string (ESTRATEGIA HÍBRIDA FINAL) ---
 def parse_schedule_string(schedule_str):
     """
-    Parsea un string de horario y devuelve bloques normalizados usando un método iterativo.
+    Parsea un string de horario y devuelve bloques normalizados.
     """
     if not schedule_str: return []
     s_std = apply_equivalences(clean_and_standardize(schedule_str), EQUIVALENCIAS)
     logger.debug(f"DEBUG parse_schedule_string - Con equivalencias: '{s_std}'")
-
-    # --- CORRECCIÓN DEFINITIVA EN LA EXPRESIÓN REGULAR ---
-    # Este regex define la "frase de días" de forma estricta: una secuencia de palabras 
-    # (ej: "lunes", "medio") o dígitos únicos (ej: el "1" en "sábados 1").
-    # Esto evita que se "coma" horarios intermedios como "7-14".
-    pattern = re.compile(
-        r"^\s*(?:y\s+)?((?:(?:[a-záéíóúñ\-]+|\d)(?:\s+)?)+?)\s*(?:de)?\s+(\d{1,2}(?:[:.]?\d{2})?)\s*(?:a|-)\s*(\d{1,2}(?:[:.]?\d{2})?)",
-        re.IGNORECASE
-    )
-
-    matches = []
-    remaining_str = s_std
-    # Bucle que consume el string progresivamente
-    while remaining_str:
-        match = pattern.search(remaining_str)
-        if match:
-            matches.append(match)
-            # Corta el string, eliminando la parte ya procesada
-            remaining_str = remaining_str[match.end():].strip()
-        else:
-            # Si no se encuentran más horarios, se detiene el bucle
-            logger.debug(f"DEBUG - No se encontraron más bloques en: '{remaining_str}'")
-            break
-            
-    logger.debug(f"DEBUG - Se encontraron {len(matches)} bloques con el parser iterativo.")
+    
+    # Regex final: no codicioso para permitir que finditer separe bloques por espacios.
+    pattern = re.compile(r"((?:(?:[a-záéíóúñ\-]+|\d)(?:\s+)?)+?)\s*(?:de)?\s+(\d{1,2}(?:[:.]?\d{2})?)\s*(?:a|-)\s*(\d{1,2}(?:[:.]?\d{2})?)", re.IGNORECASE)
+    
+    # Estrategia Híbrida:
+    # 1. Intentar encontrar todos los bloques con finditer (ideal para bloques separados por espacios).
+    matches = list(pattern.finditer(s_std))
+    
+    # 2. Si finditer falla en un caso con "y", usar la división inteligente como fallback.
+    if len(matches) <= 1 and " y " in s_std:
+        logger.debug("DEBUG - Usando fallback de división inteligente para string con 'y'.")
+        matches = division_inteligente_bloques(s_std, pattern)
 
     if not matches:
         logger.debug("DEBUG - No se encontraron bloques horarios.")
         return []
         
+    logger.debug(f"DEBUG - Se encontraron {len(matches)} bloques para procesar.")
     normalized_blocks = []
     for match in matches:
         try:
@@ -521,7 +526,6 @@ def parse_schedule_string(schedule_str):
                 "cruza_dia": start_time > end_time
             }
             normalized_blocks.append(block_data)
-            
         except Exception as e:
             logger.error(f"ERROR procesando bloque: {match.group(0)} -> {e}")
             
