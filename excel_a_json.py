@@ -78,6 +78,52 @@ EQUIVALENCIAS.update(EQUIVALENCIAS_MENSUALES)
 # Este paso es VITAL para que "1 sábado al mes" se reemplace antes que "sábado".
 EQUIVALENCIAS = dict(sorted(EQUIVALENCIAS.items(), key=lambda item: len(item[0]), reverse=True))
 
+DIAS_RANGO = {
+    # Rangos típicos
+    "lunes a jueves": "lunes-jueves",
+    "lunes a viernes": "lunes-viernes",
+    "lunes a sabado": "lunes-sabado",
+    "lunes a sábados": "lunes-sabado",
+    "lunes a sábado": "lunes-sabado",
+    "lunes a domingo": "lunes-domingo",
+    "lunes a domingos": "lunes-domingo",
+    "lunes a miercoles": "lunes-miércoles",
+    "lunes a martes": "lunes-martes",
+    "martes a viernes": "martes-viernes",
+    "miércoles a viernes": "miércoles-viernes",
+    "jueves a sábado": "jueves-sábado",
+    "jueves a sabados": "jueves-sábado",
+    
+    # Combinaciones con varias palabras
+    "lunes, martes y miercoles": "lunes y martes y miércoles",
+    "lunes martes y miercoles": "lunes y martes y miércoles",
+    
+    # Feriados y fines de semana
+    "sábado domingo feriado": "sábado y domingo y feriado",
+    "sábado feriado": "sábado y feriado",
+    "domingo feriado": "domingo y feriado",
+    "sado fe": "sábado y domingo y feriado",
+    "sadofe": "sábado y domingo y feriado",
+    "safe": "sábado y feriado",
+    "dofe": "domingo y feriado",
+    
+    # Sábado o domingo por medio
+    "sabados por medio": "sábado por medio",
+    "sábado por medio": "sábado por medio",
+    "domingo por medio": "domingo por medio",
+    
+    # Variantes cortas de LaV
+    "l a v": "lunes-viernes",
+    "l-v": "lunes-viernes",
+    "lav": "lunes-viernes",
+    "l v": "lunes-viernes",
+    "l/v": "lunes-viernes",
+    "la v": "lunes-viernes",
+    
+    # Variantes cortas de LaJ
+    "l a j": "lunes-jueves",
+    "la j": "lunes-jueves",
+}
 
 MODALIDAD_MAP = {
     'EVENTUAL': 'eventual', 'PERÍODO DE PRUEBA': 'periodo_prueba', 'PERÍODO DE PRUEBA (JORNADA PARCIAL)': 'periodo_prueba_parcial',
@@ -170,35 +216,30 @@ def limpiar_prefijos_horas(text: str) -> str:
 
 def apply_equivalences(text: str, equivalences: dict) -> str:
     """
-    Normaliza texto de horarios: días, conectores, periodicidades y variantes de LaV.
+    Normaliza un string de horario usando:
+      1️⃣ DIAS_RANGO: priorizando rangos largos y específicos
+      2️⃣ EQUIVALENCIAS base y extra
+      3️⃣ Conectores y
+      4️⃣ Minutos con : o .
     """
-    original_text = text
+    import re
 
-    # variantes súper flexibles de LaV (L A V, L.A.V., L-V, etc.)
-    text = re.sub(
-        r'\b(?:l\s*[\.\-]?\s*a\s*[\.\-]?\s*v)\b',
-        'lunes-viernes',
-        text,
-        flags=re.IGNORECASE
-    )
+    # 🔹 Aplicar rangos largos primero (prioridad máxima)
+    for old, new in sorted(DIAS_RANGO.items(), key=lambda x: -len(x[0])):
+        pattern = re.compile(re.escape(old), flags=re.IGNORECASE)
+        text = pattern.sub(new, text)
 
-    # Detectar "1 Sábado al mes" → "sábado mensual", "2 Domingos al mes" → "domingo mensual"
-    text = re.sub(
-        r'(\d+)\s*(lunes|martes|miércoles|miercoles|jueves|viernes|sábado|sabado|domingo)\s+al\s+mes',
-        r'\2 mensual',
-        text,
-        flags=re.IGNORECASE
-    )
+    # 🔹 Variantes de LAV y abreviaciones comunes (respetando mayúsculas)
+    for old, new in sorted(equivalences.items(), key=lambda x: -len(x[0])):
+        pattern = re.compile(r'\b' + re.escape(old) + r'\b', flags=re.IGNORECASE)
+        text = pattern.sub(new, text)
 
-    # Normalizar conectores " y " para cortar bien tramos compuestos
+    # 🔹 Conectores " y " → estandarizar como ' Y ' para cortar tramos
     text = re.sub(r'\s+y\s+(?=[a-záéíóúñ])', ' Y ', text, flags=re.IGNORECASE)
 
-    # Aplicar equivalencias existentes (palabra completa), priorizando claves largas
-    for old, new in sorted(equivalences.items(), key=lambda x: len(x[0]), reverse=True):
-        pattern = r'\b' + re.escape(old) + r'\b'
-        text = re.sub(pattern, new, text, flags=re.IGNORECASE)
+    # 🔹 Normalizar minutos para que acepte 7.30, 7:30 o 07:30
+    text = re.sub(r'(\d{1,2})[:\.](\d{2})', lambda m: f"{int(m.group(1)):02d}:{m.group(2)}", text)
 
-    logger.debug(f"DEBUG apply_equivalences - Original: '{original_text}' -> Normalizado: '{text}'")
     return text
 
 def normalizar_horario_input(s: str) -> str:
