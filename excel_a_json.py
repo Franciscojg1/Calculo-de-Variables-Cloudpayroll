@@ -221,10 +221,10 @@ def apply_equivalences(text: str, equivalences: dict) -> str:
 
     # Detectar patrones tipo "3 S" → "3S"
     text = re.sub(
-    r'\b(?<![-\d])(\d+)\s*[sS]\b',  # <-- REGEX CORREGIDA
+    r'\b(?<![:\.\-\d])(\d+)\s*[sS]\b',  # <-- REGEX MEJORADA
     lambda m: f"{m.group(1)}S",
     text
-   )
+    )
 
     # Normalizar conectores " y " para cortar bien tramos compuestos
     text = re.sub(r'\s+y\s+(?=[a-záéíóúñ])', ' Y ', text, flags=re.IGNORECASE)
