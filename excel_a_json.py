@@ -639,14 +639,13 @@ def parse_schedule_string(schedule_str):
 
 def calcular_resumen_horario(bloques, nombre_sede=None):
     from datetime import datetime as dt, time as tm, timedelta
-    
+
     total_horas = 0.0
     total_horas_nocturnas = 0.0
     dias_trabajo = set()
     tiene_nocturnidad = False
     bloques_por_dia = {i: [] for i in range(8)}
     detalle_nocturno = {'horario_nocturno': '22:00-06:00', 'total_horas': 0.0, 'por_dia': {}}
-    
     HORA_INICIO_NOCTURNA = tm(22, 0)
     HORA_FIN_NOCTURNA = tm(6, 0)
 
@@ -661,52 +660,54 @@ def calcular_resumen_horario(bloques, nombre_sede=None):
                 duracion_total = (24 - h_inicio.hour - h_inicio.minute / 60) + (h_fin.hour + h_fin.minute / 60)
             else:
                 duracion_total = (h_fin.hour + h_fin.minute / 60) - (h_inicio.hour + h_inicio.minute / 60)
-            
+
             # --- LÓGICA DE CÁLCULO DE HORAS NOCTURNAS ---
             horas_noct = 0.0
             temp_dt_inicio = dt.combine(dt.today(), h_inicio)
             temp_dt_fin = dt.combine(dt.today(), h_fin)
+
             if cruza_dia:
                 temp_dt_fin += timedelta(days=1)
+
             temp_dt_nocturna_inicio = dt.combine(dt.today(), HORA_INICIO_NOCTURNA)
             temp_dt_nocturna_fin = dt.combine(dt.today() + timedelta(days=1), HORA_FIN_NOCTURNA)
+
             overlap_start = max(temp_dt_inicio, temp_dt_nocturna_inicio)
             overlap_end = min(temp_dt_fin, temp_dt_nocturna_fin)
+
             if overlap_start < overlap_end:
                 overlap_duration = overlap_end - overlap_start
                 horas_noct = overlap_duration.total_seconds() / 3600
                 tiene_nocturnidad = True
-            # --- FIN HORAS NOCTURNAS ---
-            
-            # CALCULAR FACTOR (proporcional/quincenal/normal)
-            factor = bloque['periodicidad'].get('factor', 
-                0.5 if bloque['periodicidad']['tipo'] == 'quincenal' else 1.0)
-            
+
+            # CALCULAR FACTOR
+            factor = bloque['periodicidad'].get('factor', 0.5 if bloque['periodicidad']['tipo'] == 'quincenal' else 1.0)
             dias = set(bloque['dias_semana'])
-            
+            cantidad_dias = len(dias)
+
             for dia in dias:
                 dias_trabajo.add(dia)
-                # CALCULAR HORAS SEMANALES CON FACTOR
-                horas_semanales_bloque = round(duracion_total * factor, 2)
-                bloques_por_dia[dia].append({
-                    'inicio': bloque['hora_inicio'],
-                    'fin': bloque['hora_fin'],
-                    'duracion_total': round(duracion_total, 2),
-                    'horas_nocturnas': round(horas_noct, 2),
-                    'periodicidad': bloque['periodicidad']['tipo'],
-                    'horas_semanales': horas_semanales_bloque,
-                })
-            
-            # TOTAL HORAS SEMANALES Y NOCTURNAS
-            total_horas += duracion_total * len(dias) * factor
-            total_horas_nocturnas += horas_noct * len(dias) * factor
-            
-        except Exception:
+
+            # CALCULAR HORAS SEMANALES CON FACTOR
+            horas_semanales_bloque = round(duracion_total * factor, 2)
+            bloques_por_dia[dia].append({
+                'inicio': bloque['hora_inicio'],
+                'fin': bloque['hora_fin'],
+                'duracion_total': round(duracion_total, 2),
+                'horas_nocturnas': round(horas_noct, 2),
+                'periodicidad': bloque['periodicidad']['tipo'],
+                'horas_semanales': horas_semanales_bloque,
+            })
+
+            total_horas += duracion_total * cantidad_dias * factor
+            total_horas_nocturnas += horas_noct * cantidad_dias * factor
+
+        except Exception as e:
             continue
-            
+
     # Limpiar días sin bloques
     bloques_por_dia = {k: v for k, v in bloques_por_dia.items() if v}
-    
+
     resultado = {
         'total_horas_semanales': round(total_horas, 2),
         'total_horas_nocturnas': round(total_horas_nocturnas, 2),
@@ -715,11 +716,15 @@ def calcular_resumen_horario(bloques, nombre_sede=None):
         'detalle_nocturnidad': {
             'horario_nocturno': '22:00-06:00',
             'total_horas': round(total_horas_nocturnas, 2),
-            'por_dia': {dia: round(sum(b['horas_nocturnas'] for b in bloques_por_dia[dia]), 2) 
-                       for dia in sorted(dias_trabajo) if dia in bloques_por_dia}
+            'por_dia': {
+                dia: round(sum(b['horas_nocturnas'] for b in bloques_por_dia[dia]), 2)
+                for dia in sorted(dias_trabajo) if dia in bloques_por_dia
+            }
         },
         'tiene_fin_semana': any(dia in {5, 6} for dia in dias_trabajo),
-        'bloques_por_dia': {dia: bloques_por_dia[dia] for dia in sorted(dias_trabajo) if dia in bloques_por_dia}
+        'bloques_por_dia': {
+            dia: bloques_por_dia[dia] for dia in sorted(dias_trabajo) if dia in bloques_por_dia
+        }
     }
 
     if nombre_sede is not None:
