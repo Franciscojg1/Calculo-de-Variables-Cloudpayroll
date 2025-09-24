@@ -194,9 +194,16 @@ def limpiar_prefijos_horas(text: str) -> str:
     return re.sub(r'^\s*\d+\s*h?s?\b\s*', '', text, flags=re.IGNORECASE)
 
 def apply_equivalences(text: str, equivalences: dict) -> str:
+    """
+    Normaliza texto de horarios:
+    - Prioriza rangos largos
+    - Respeta horarios que ya funcionaban
+    - Normaliza conectores y periodicidades
+    - Reconoce sábados tipo '1S', '2S', '3S' y los deja como 'sábado mensual' con frecuencia proporcional
+    """
     original_text = text
 
-    # Normalizar variantes LaV
+    # Normalize variantes súper flexibles de LaV
     text = re.sub(
         r'\b(?:l\s*[\.\-]?\s*a\s*[\.\-]?\s*v)\b',
         'lunes-viernes',
@@ -212,30 +219,19 @@ def apply_equivalences(text: str, equivalences: dict) -> str:
         flags=re.IGNORECASE
     )
 
-    # Normalizar conectores " y "
+    # Detectar sábados tipo 1S, 2S, 3S → 'sábado 1', 'sábado 2', etc.
+    def replace_sabados(match):
+        num = match.group(1)
+        return f"sábado {num}"
+
+    text = re.sub(r'\b(\d+)\s*[sS]\b', replace_sabados, text)
+
+    # Normalizar conectores " y " para cortar bien tramos compuestos
     text = re.sub(r'\s+y\s+(?=[a-záéíóúñ])', ' Y ', text, flags=re.IGNORECASE)
 
-    # --- NUEVO: unir sábados proporcionales con el horario ---
-    # Detecta "sábado 3 8-12" o "s 3 8-12"
-    def saturday_proportional(match):
-        day = match.group(1)
-        num = match.group(2)
-        start = match.group(3)
-        end = match.group(4)
-        return f"{day} {start}-{end} {num}S"
-
-    text, count = re.subn(
-        r'\b(sábado|sabado|s)\s+(\d)\s+(\d{1,2}(?:[:\.]\d{2})?)\s*[-a]\s*(\d{1,2}(?:[:\.]\d{2})?)',
-        saturday_proportional,
-        text,
-        flags=re.IGNORECASE
-    )
-
-    if count > 0:
-        logger.debug(f"DEBUG apply_equivalences_safe - Sábados proporcionales unidos: {count} reemplazos")
-
-    # Aplicar equivalencias largas
+    # Aplicar equivalencias largas primero
     for old, new in sorted(equivalences.items(), key=lambda x: len(x[0]), reverse=True):
+        # Hacemos word boundary para no romper otras palabras
         pattern = r'\b' + re.escape(old) + r'\b'
         text = re.sub(pattern, new, text, flags=re.IGNORECASE)
 
@@ -490,45 +486,35 @@ def parsear_fecha(valor: Any) -> Optional[str]:
 def get_day_indices(day_words):
     """
     Procesa palabras de días y devuelve índices de días + datos proporcionales.
-    Maneja días individuales, rangos con guion, rangos con "a" y sábados proporcionales tipo '3S'.
+    Maneja días individuales, rangos con guion y rangos con "a".
     """
     day_indices, proportional_data = set(), {}
     i = 0
     while i < len(day_words):
         word = day_words[i].strip().lower()
 
-        # Caso 1: Sábados proporcionales "3S", "1s", etc.
-        m_sab = re.match(r'(\d+)\s*s', word, flags=re.IGNORECASE)
-        if m_sab:
-            num = int(m_sab.group(1))
-            if 1 <= num <= 4:
-                proportional_data[5] = num  # 5 = sábado
-                day_indices.add(5)
-                i += 1
-                continue
-
-        # Caso 2: Sábados con número separado ("sábado 3")
-        elif word in ["sábado", "sabado", "sábados"] and i + 1 < len(day_words) and day_words[i+1].isdigit():
-            num = int(day_words[i+1])
+        # Caso 1: Sábados proporcionales (ej: "sábados 1")
+        if word in ["sábado", "sabado", "sábados"] and i + 1 < len(day_words) and day_words[i + 1].isdigit():
+            num = int(day_words[i + 1])
             if 1 <= num <= 4:
                 proportional_data[5] = num
                 day_indices.add(5)
-                i += 2
-                continue
+            i += 2
+            continue
 
-        # Caso 3: Rangos con guion (ej: "lunes-viernes")
+        # Caso 2: Rangos con guion (ej: "lunes-viernes")
         elif '-' in word:
             parts = word.split('-')
             if len(parts) == 2 and (start_idx := DAY_MAP.get(parts[0])) is not None and (end_idx := DAY_MAP.get(parts[1])) is not None:
                 day_indices.update(range(min(start_idx, end_idx), max(start_idx, end_idx) + 1))
 
-        # Caso 4: Rangos con "a" (ej: "lunes a viernes") - lógica restaurada
+        # Caso 3: Rangos con "a" (ej: "lunes a viernes")
         elif word == "a" and i > 0 and i < len(day_words) - 1:
-            start_word, end_word = day_words[i-1], day_words[i+1]
+            start_word, end_word = day_words[i - 1], day_words[i + 1]
             if (start_idx := DAY_MAP.get(start_word)) is not None and (end_idx := DAY_MAP.get(end_word)) is not None:
                 day_indices.update(range(min(start_idx, end_idx), max(start_idx, end_idx) + 1))
 
-        # Caso 5: Días individuales
+        # Caso 4: Días individuales
         elif (idx := DAY_MAP.get(word)) is not None:
             day_indices.add(idx)
 
