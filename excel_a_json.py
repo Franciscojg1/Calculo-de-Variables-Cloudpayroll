@@ -199,6 +199,7 @@ def apply_equivalences(text: str, equivalences: dict) -> str:
     - Prioriza rangos largos
     - Respeta horarios que ya funcionaban
     - Normaliza conectores y periodicidades
+    - Detecta sábados tipo "1S", "2S", "3S" y los unifica
     """
     original_text = text
 
@@ -216,6 +217,13 @@ def apply_equivalences(text: str, equivalences: dict) -> str:
         r'\2 mensual',
         text,
         flags=re.IGNORECASE
+    )
+
+    # Detectar patrones tipo "3 S" → "3S"
+    text = re.sub(
+        r'\b(\d+)\s*[sS]\b',
+        lambda m: f"{m.group(1)}S",
+        text
     )
 
     # Normalizar conectores " y " para cortar bien tramos compuestos
