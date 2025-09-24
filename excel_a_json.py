@@ -454,7 +454,6 @@ def division_inteligente_bloques(texto, pattern):
             bloques.append(match)
     return bloques
 
-# --- FUNCIÓN PRINCIPAL: parse_schedule_string (VERSIÓN FINAL) ---
 def parse_schedule_string(schedule_str):
     """
     Parsea un string de horario y devuelve bloques normalizados usando un método iterativo.
@@ -464,8 +463,9 @@ def parse_schedule_string(schedule_str):
     logger.debug(f"DEBUG parse_schedule_string - Con equivalencias: '{s_std}'")
 
     # --- CORRECCIÓN DEFINITIVA EN LA EXPRESIÓN REGULAR ---
-    # Se define la "frase de días" de forma estricta: una secuencia de palabras, guiones,
-    # y/o dígitos únicos. Esto evita que consuma horarios intermedios.
+    # Este regex define la "frase de días" de forma estricta: una secuencia de palabras 
+    # (ej: "lunes", "medio") o dígitos únicos (ej: el "1" en "sábados 1").
+    # Esto evita que se "coma" horarios intermedios como "7-14".
     pattern = re.compile(
         r"^\s*(?:y\s+)?((?:(?:[a-záéíóúñ\-]+|\d)(?:\s+)?)+?)\s*(?:de)?\s+(\d{1,2}(?:[:.]?\d{2})?)\s*(?:a|-)\s*(\d{1,2}(?:[:.]?\d{2})?)",
         re.IGNORECASE
@@ -473,12 +473,15 @@ def parse_schedule_string(schedule_str):
 
     matches = []
     remaining_str = s_std
+    # Bucle que consume el string progresivamente
     while remaining_str:
         match = pattern.search(remaining_str)
         if match:
             matches.append(match)
+            # Corta el string, eliminando la parte ya procesada
             remaining_str = remaining_str[match.end():].strip()
         else:
+            # Si no se encuentran más horarios, se detiene el bucle
             logger.debug(f"DEBUG - No se encontraron más bloques en: '{remaining_str}'")
             break
             
