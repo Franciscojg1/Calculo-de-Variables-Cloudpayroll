@@ -463,17 +463,30 @@ def parse_schedule_string(schedule_str):
     s_std = apply_equivalences(clean_and_standardize(schedule_str), EQUIVALENCIAS)
     logger.debug(f"DEBUG parse_schedule_string - Con equivalencias: '{s_std}'")
     
-    # CORRECCIÓN 1: Regex definitivo que acepta números en la frase de días (ej: "sábados 1")
+    # El regex que permite números en la frase del día es correcto.
     pattern = re.compile(r"((?:[a-záéíóúñ\d\-]+(?:\s+y\s+|\s+)?)+?)(?:\s+de)?\s+(\d{1,2}(?:[:.]?\d{2})?)\s*(?:a|-)\s*(\d{1,2}(?:[:.]?\d{2})?)", re.IGNORECASE)
     
     matches = list(pattern.finditer(s_std))
     
-    # CORRECCIÓN 2: Lógica simplificada que confía en la división inteligente si hay una "y"
-    if " y " in s_std:
-         logger.debug("DEBUG - Se detectó 'y', aplicando división inteligente de bloques...")
-         matches = division_inteligente_bloques(s_std, pattern)
+    # --- LÓGICA DE DIVISIÓN RESTAURADA Y CORREGIDA ---
+    # Esta es la lógica robusta que funciona para ambos casos.
+    # Decide si usar la división inteligente basándose en si el match cubre todo el string.
+    run_division_inteligente = False
+    if len(matches) == 1 and len(matches[0].group(0).strip()) < len(s_std.strip()) and " y " in s_std:
+        run_division_inteligente = True
+    elif not matches and " y " in s_std:
+        run_division_inteligente = True
+    # Si la división inteligente no se activa, finditer encontrará todos los bloques
+    # separados por espacios por sí solo.
 
-    if not matches: return []
+    if run_division_inteligente:
+         logger.debug("DEBUG - Se detectó 'y', aplicando división inteligente de bloques...")
+         if divided_matches := division_inteligente_bloques(s_std, pattern):
+            matches = divided_matches
+
+    if not matches:
+        logger.debug("DEBUG - No se encontraron bloques horarios.")
+        return []
         
     normalized_blocks = []
     for match in matches:
@@ -482,11 +495,11 @@ def parse_schedule_string(schedule_str):
             tokens = re.findall(r'[a-záéíóúñ]+-[a-záéíóúñ]+|[a-záéíóúñ]+|\d+', day_phrase)
             day_words = [word for word in tokens if word not in ['y', 'de']]
             
-            current_dias, proportional_data = get_day_indices(day_words)
+            current_dias, proporcional_data = get_day_indices(day_words)
             if not current_dias: continue
 
-            if proportional_data and 5 in proportional_data:
-                periodicity = { "tipo": "proporcional", "frecuencia": f"{proportional_data[5]}/4", "factor": proportional_data[5] / 4.0 }
+            if proporcional_data and 5 in proporcional_data:
+                periodicity = { "tipo": "proporcional", "frecuencia": f"{proporcional_data[5]}/4", "factor": proporcional_data[5] / 4.0 }
             elif any(w in day_words for w in ["por", "medio"]):
                 periodicity = { "tipo": "quincenal", "frecuencia": 2, "factor": 0.5 }
             else:
