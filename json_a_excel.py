@@ -902,6 +902,13 @@ def calcular_dias_mensuales(legajo: Dict[str, Any]) -> int:
                     dias_semanales += 0.5
                     dia_procesado = True
                     logger.debug(f"Legajo {id_legajo}: Día {dia_str} → quincenal (0.5)")
+
+                # ===== INICIO DE LA CORRECCIÓN =====
+                elif periodicidad == "mensual" and not dia_procesado:
+                    dias_semanales += 0.25  # 1 día al mes = 1/4 de día a la semana
+                    dia_procesado = True
+                    logger.debug(f"Legajo {id_legajo}: Día {dia_str} → mensual (0.25)")
+                # ===== FIN DE LA CORRECCIÓN =====
                     
                 elif periodicidad == "proporcional" and not dia_procesado:
                     # CALCULAR FACTOR PROPORCIONAL
@@ -923,9 +930,8 @@ def calcular_dias_mensuales(legajo: Dict[str, Any]) -> int:
                 logger.debug(f"Legajo {id_legajo}: Día {dia_str} → sin periodicidad (1.0)")
 
         dias_mensuales = dias_semanales * 4.33
-        parte_entera = int(dias_mensuales)
-        parte_decimal = dias_mensuales - parte_entera
-        dias_mensuales_redondeados = parte_entera + 1 if parte_decimal >= 0.5 else parte_entera
+        # Usamos un redondeo estándar (ej: 22.7 -> 23)
+        dias_mensuales_redondeados = int(dias_mensuales + 0.5)
 
         logger.info(
             f"Legajo {id_legajo}: Días semanales efectivos = {dias_semanales:.2f}, "
@@ -936,7 +942,7 @@ def calcular_dias_mensuales(legajo: Dict[str, Any]) -> int:
 
     except Exception as e:
         logger.error(f"Legajo {id_legajo}: Error al calcular días mensuales. Detalle: {str(e)}")
-        logger.error(traceback.format_exc())
+        # import traceback; logger.error(traceback.format_exc()) # Descomentar para debug más profundo
         return 0
     
 def cumple_condicion_sueldo_basico(legajo: Dict[str, Any]) -> bool:
