@@ -1491,7 +1491,7 @@ def calcular_horas_mensuales(legajo: Dict[str, Any], v239: float) -> float:
 def calcular_jornada_reducida(legajo: Dict[str, Any], es_guardia: bool) -> Optional[float]:
     """
     Calcula la variable 1167 (% de jornada reducida) con detección robusta de puestos especiales.
-    Versión mejorada con manejo más robusto de categorías FC/PFC.
+    Versión mejorada con manejo más robusto de categorías FC/PFC y excepción Medicina Nuclear + Asistente Técnico.
     """
     try:
         # --- Extracción de datos ---
@@ -1535,7 +1535,7 @@ def calcular_jornada_reducida(legajo: Dict[str, Any], es_guardia: bool) -> Optio
             logger.info(f"[1167] Legajo {id_legajo}: APLICA (regla especial 18h en L/M/V → {resultado}%)")
             return resultado
         
-        # --- Asignación de piso horario según sector y puesto (CORREGIDO) ---
+        # --- Asignación de piso horario según sector y puesto (con excepción) ---
         puestos_lab_piso_27 = [normalizar_texto(p) for p in [
             "AUXILIAR TECNICO", "TECNICO DE LABORATORIO", 
             "TECNICO EXTRACCIONISTA", "BIOQUIMICO"
@@ -1559,6 +1559,12 @@ def calcular_jornada_reducida(legajo: Dict[str, Any], es_guardia: bool) -> Optio
         if any(sector == s for s in sectores_laboratorio) and puesto in puestos_lab_piso_27:
             piso = 27.0
             logger.debug(f"[1167] Legajo {id_legajo}: Sector relacionado con laboratorio '{sector}' con puesto '{puesto}' → piso 27h")
+
+        # --- Excepción Medicina Nuclear + Asistente Técnico ---
+        elif sector == normalizar_texto("medicina nuclear") and puesto == normalizar_texto("asistente tecnico"):
+            piso = PISOS_HORARIOS.get(normalizar_texto('GENERAL'), 36.0)
+            logger.debug(f"[1167] Legajo {id_legajo}: EXCEPCIÓN → Sector '{sector}' con puesto '{puesto}' → piso {piso}h (general)")
+
         elif sector in SECTORES_IMAGENES:
             piso = PISOS_HORARIOS.get(normalizar_texto('IMAGENES'), 36.0)
             logger.debug(f"[1167] Legajo {id_legajo}: Sector IMÁGENES → piso {piso}h")
@@ -1584,7 +1590,7 @@ def calcular_jornada_reducida(legajo: Dict[str, Any], es_guardia: bool) -> Optio
         logger.error(f"[1167] Legajo {legajo.get('id_legajo', 'N/A')}: Error - {str(e)}")
         logger.error(traceback.format_exc())
         return None
-    
+
 def calcular_jornada_art19(legajo: Dict[str, Any], horas_semanales: float) -> Optional[int]:
     """
     Determina si aplica la variable 1416 (Jornada Art. 19) según las reglas:
