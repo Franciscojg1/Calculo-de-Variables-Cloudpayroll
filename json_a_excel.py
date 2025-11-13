@@ -375,8 +375,10 @@ def log_variable_evaluando(id_legajo: Any, cod_variable: int) -> None:
         id_legajo: ID del legajo
         cod_variable: Código de la variable
     """
-    nombre_var = CATALOGO_VARIABLES.get(cod_variable, f"V{cod_variable}")
-    logger.debug(f"Legajo {id_legajo}: Evaluando V{cod_variable} ({nombre_var})...")
+    # Comentado para reducir ruido en logs
+    # nombre_var = CATALOGO_VARIABLES.get(cod_variable, f"V{cod_variable}")
+    # logger.debug(f"Legajo {id_legajo}: Evaluando V{cod_variable} ({nombre_var})...")
+    pass
 
 def log_resumen_variables(id_legajo: Any, variables: List[Tuple[int, Any]]) -> None:
     """
@@ -1231,27 +1233,24 @@ def cumple_condicion_sueldo_basico(legajo: Dict[str, Any]) -> bool:
     try:
         # 1. Validar categoría
         categoria = legajo.get('contratacion', {}).get('categoria')
-        logger.debug(f"[V1] Legajo {id_legajo}: Categoría = '{categoria}'")
         
         if categoria != 'fc_pfc':
-            logger.debug(f"[V1] Legajo {id_legajo}: NO APLICA - Categoría '{categoria}' != 'fc_pfc'")
+            logger.debug(f"[V1] Legajo {id_legajo}: ✗ Categoría '{categoria}' != 'fc_pfc'")
             return False
 
         # 2. Validar sueldo_base existe
         sueldo = legajo.get('remuneracion', {}).get('sueldo_base')
-        logger.debug(f"[V1] Legajo {id_legajo}: Sueldo base = {sueldo}")
         
         if sueldo is None:
-            logger.debug(f"[V1] Legajo {id_legajo}: NO APLICA - Sueldo base es None")
+            logger.debug(f"[V1] Legajo {id_legajo}: ✗ Sueldo base es None")
             return False
 
         # 3. Validar que sea numérico
-        sueldo_float = float(sueldo)
-        logger.debug(f"[V1] Legajo {id_legajo}: ✓ APLICA - Categoría fc_pfc con sueldo válido ${sueldo_float}")
+        float(sueldo)  # Solo para validar
         return True
 
     except (KeyError, ValueError, TypeError) as e:
-        logger.debug(f"[V1] Legajo {id_legajo}: NO APLICA - Error de validación: {str(e)}")
+        logger.debug(f"[V1] Legajo {id_legajo}: ✗ Error: {str(e)}")
         return False
 
 def es_full_nocturno(legajo: Dict[str, Any]) -> bool:
@@ -1434,36 +1433,30 @@ def aplicar_lavado_uniforme(legajo: Dict[str, Any]) -> bool:
         # Acceder a datos_personales
         datos_personales = legajo.get('datos_personales')
         if not isinstance(datos_personales, dict):
-            logger.debug(f"[V1137] Legajo {id_legajo}: NO APLICA - datos_personales inválido")
+            logger.debug(f"[V1137] Legajo {id_legajo}: ✗ datos_personales inválido")
             return False
 
         # Normalizar puesto
         puesto_raw = datos_personales.get('puesto')
         puesto_normalizado = normalizar_texto(puesto_raw)
-        logger.debug(f"[V1137] Legajo {id_legajo}: Puesto = '{puesto_raw}' (normalizado: '{puesto_normalizado}')")
 
         # Acceder a sector
         sector_data = datos_personales.get('sector')
         if not isinstance(sector_data, dict):
-            logger.debug(f"[V1137] Legajo {id_legajo}: NO APLICA - Sector inválido")
+            logger.debug(f"[V1137] Legajo {id_legajo}: ✗ Sector inválido")
             return False
 
         # Normalizar subsector
         subsector_raw = sector_data.get('subsector')
         subsector_normalizado = normalizar_texto(subsector_raw)
-        logger.debug(f"[V1137] Legajo {id_legajo}: Subsector = '{subsector_raw}' (normalizado: '{subsector_normalizado}')")
 
         # Validar condiciones
         puesto_ok = puesto_normalizado == normalizar_texto("OPERARIO DE LOGISTICA")
         subsector_ok = subsector_normalizado == normalizar_texto("INTERIOR")
         
-        logger.debug(f"[V1137] Legajo {id_legajo}: Puesto OK={puesto_ok}, Subsector OK={subsector_ok}")
-        
         resultado = puesto_ok and subsector_ok
-        if resultado:
-            logger.debug(f"[V1137] Legajo {id_legajo}: ✓ APLICA - Operario de Logística en Interior")
-        else:
-            logger.debug(f"[V1137] Legajo {id_legajo}: NO APLICA - No cumple condiciones")
+        if not resultado:
+            logger.debug(f"[V1137] Legajo {id_legajo}: ✗ Puesto='{puesto_raw}', Subsector='{subsector_raw}'")
         
         return resultado
 
@@ -2200,7 +2193,7 @@ def calcular_jornada_art19(legajo: Dict[str, Any], horas_semanales: float) -> Op
     try:
         # 0. Validaciones básicas
         if not legajo or not isinstance(horas_semanales, (int, float)):
-            logger.debug(f"[V1416] Legajo {id_legajo}: ✗ NO APLICA - Datos inválidos")
+            logger.debug(f"[V1416] Legajo {id_legajo}: ✗ Datos inválidos")
             return None
 
         # 1. Validar categoría
@@ -2208,27 +2201,16 @@ def calcular_jornada_art19(legajo: Dict[str, Any], horas_semanales: float) -> Op
         categoria = normalizar_texto(categoria_raw)
         categoria_prefix = normalizar_texto(ConfigArt19.CATEGORIA_PREFIX)
         
-        logger.debug(f"[V1416] Legajo {id_legajo}: Categoría = '{categoria_raw}' (normalizado: '{categoria}')")
-        logger.debug(f"[V1416] Legajo {id_legajo}: Prefijo requerido = '{categoria_prefix}'")
-        
-        categoria_cumple = categoria_prefix in categoria
-        logger.debug(f"[V1416] Legajo {id_legajo}: ¿Categoría contiene prefijo? {categoria_cumple}")
-        
-        if not categoria_cumple:
-            logger.debug(f"[V1416] Legajo {id_legajo}: ✗ NO APLICA - Categoría no contiene prefijo")
+        if categoria_prefix not in categoria:
+            logger.debug(f"[V1416] Legajo {id_legajo}: ✗ Categoría '{categoria_raw}' sin prefijo '{ConfigArt19.CATEGORIA_PREFIX}'")
             return None
 
         # 2. Validar puesto
         puesto_raw = legajo.get('datos_personales', {}).get('puesto', '')
         puesto = normalizar_texto(puesto_raw)
         
-        logger.debug(f"[V1416] Legajo {id_legajo}: Puesto = '{puesto_raw}' (normalizado: '{puesto}')")
-        
-        puesto_cumple = puesto in ConfigArt19.PUESTOS_VALIDOS
-        logger.debug(f"[V1416] Legajo {id_legajo}: ¿Puesto en PUESTOS_VALIDOS? {puesto_cumple}")
-        
-        if not puesto_cumple:
-            logger.debug(f"[V1416] Legajo {id_legajo}: ✗ NO APLICA - Puesto no válido")
+        if puesto not in ConfigArt19.PUESTOS_VALIDOS:
+            logger.debug(f"[V1416] Legajo {id_legajo}: ✗ Puesto '{puesto_raw}' no válido")
             return None
 
         # 3. Validar sector (si está definido)
@@ -2236,33 +2218,20 @@ def calcular_jornada_art19(legajo: Dict[str, Any], horas_semanales: float) -> Op
             sector_raw = legajo.get('datos_personales', {}).get('sector', {}).get('principal', '')
             sector = normalizar_texto(sector_raw)
             
-            logger.debug(f"[V1416] Legajo {id_legajo}: Sector = '{sector_raw}' (normalizado: '{sector}')")
-            logger.debug(f"[V1416] Legajo {id_legajo}: Sector requerido = '{ConfigArt19.SECTOR_VALIDO}'")
-            
-            sector_cumple = sector == ConfigArt19.SECTOR_VALIDO
-            logger.debug(f"[V1416] Legajo {id_legajo}: ¿Sector coincide? {sector_cumple}")
-            
-            if not sector_cumple:
-                logger.debug(f"[V1416] Legajo {id_legajo}: ✗ NO APLICA - Sector no coincide")
+            if sector != ConfigArt19.SECTOR_VALIDO:
+                logger.debug(f"[V1416] Legajo {id_legajo}: ✗ Sector '{sector_raw}' != '{ConfigArt19.SECTOR_VALIDO}'")
                 return None
 
         # 4. Validar horas semanales
-        logger.debug(f"[V1416] Legajo {id_legajo}: Horas semanales = {horas_semanales}")
-        logger.debug(f"[V1416] Legajo {id_legajo}: Horas mínimas = {ConfigArt19.HORAS_MIN}")
-        
-        horas_cumple = horas_semanales > ConfigArt19.HORAS_MIN
-        logger.debug(f"[V1416] Legajo {id_legajo}: ¿Horas > mínimo? {horas_cumple} ({horas_semanales} > {ConfigArt19.HORAS_MIN})")
-        
-        if not horas_cumple:
-            logger.debug(f"[V1416] Legajo {id_legajo}: ✗ NO APLICA - Horas insuficientes")
+        if horas_semanales <= ConfigArt19.HORAS_MIN:
+            logger.debug(f"[V1416] Legajo {id_legajo}: ✗ Horas {horas_semanales} <= {ConfigArt19.HORAS_MIN}")
             return None
 
         # 5. Todas las condiciones cumplidas
-        logger.info(f"[V1416] Legajo {id_legajo}: ✓ APLICA - Jornada Art. 19")
         return 1
 
     except Exception as e:
-        logger.error(f"[V1416] Legajo {id_legajo}: Error calculando art.19 - {str(e)}")
+        logger.error(f"[V1416] Legajo {id_legajo}: Error - {str(e)}")
         return None
 
 def calcular_porcentaje_art19(legajo: Dict[str, Any], v239: float) -> Optional[float]:
@@ -2303,81 +2272,59 @@ def calcular_porcentaje_art19(legajo: Dict[str, Any], v239: float) -> Optional[f
         categoria_raw = legajo.get('contratacion', {}).get('categoria')
         if categoria_raw is None:
             logger.debug(f"[V1599] Legajo {id_legajo}: ✗ NO APLICA - Categoría es None")
-            return None
         
         categoria = categoria_raw.lower()
-        logger.debug(f"[V1599] Legajo {id_legajo}: Categoría = '{categoria_raw}' (lower: '{categoria}')")
 
         # 3. Extraer y normalizar sector principal
         sector_data = legajo.get('datos_personales', {}).get('sector')
         if sector_data is None or not isinstance(sector_data, dict):
-            logger.debug(f"[V1599] Legajo {id_legajo}: ✗ NO APLICA - Datos sector inválidos")
+            logger.debug(f"[V1599] Legajo {id_legajo}: ✗ Datos sector inválidos")
             return None
 
         sector_principal_raw = sector_data.get('principal')
         if sector_principal_raw is None:
-            logger.debug(f"[V1599] Legajo {id_legajo}: ✗ NO APLICA - Sector principal es None")
+            logger.debug(f"[V1599] Legajo {id_legajo}: ✗ Sector principal None")
             return None
         
         sector_principal = normalizar_texto(sector_principal_raw)
-        logger.debug(f"[V1599] Legajo {id_legajo}: Sector = '{sector_principal_raw}' (normalizado: '{sector_principal}')")
 
         # 4. Validar categoría
-        categoria_cumple = CATEGORIA_ART19_PREFIX in categoria
-        logger.debug(f"[V1599] Legajo {id_legajo}: ¿Categoría contiene '{CATEGORIA_ART19_PREFIX}'? {categoria_cumple}")
-        
-        if not categoria_cumple:
-            logger.debug(f"[V1599] Legajo {id_legajo}: ✗ NO APLICA - Categoría no válida")
+        if CATEGORIA_ART19_PREFIX not in categoria:
+            logger.debug(f"[V1599] Legajo {id_legajo}: ✗ Categoría '{categoria_raw}' sin '{CATEGORIA_ART19_PREFIX}'")
             return None
 
         # 5. Validar puesto
-        puesto_cumple = puesto in PUESTOS_ART19
-        logger.debug(f"[V1599] Legajo {id_legajo}: ¿Puesto en PUESTOS_ART19? {puesto_cumple}")
-        
-        if not puesto_cumple:
-            logger.debug(f"[V1599] Legajo {id_legajo}: ✗ NO APLICA - Puesto no válido")
+        if puesto not in PUESTOS_ART19:
+            logger.debug(f"[V1599] Legajo {id_legajo}: ✗ Puesto '{puesto_raw}' no válido")
             return None
 
         # 6. Validar sector
-        sector_cumple = sector_principal == SECTOR_ART19
-        logger.debug(f"[V1599] Legajo {id_legajo}: ¿Sector == '{SECTOR_ART19}'? {sector_cumple}")
-        
-        if not sector_cumple:
-            logger.debug(f"[V1599] Legajo {id_legajo}: ✗ NO APLICA - Sector no coincide")
+        if sector_principal != SECTOR_ART19:
+            logger.debug(f"[V1599] Legajo {id_legajo}: ✗ Sector '{sector_principal_raw}' != '{SECTOR_ART19}'")
             return None
 
         # 7. Validar rango de horas (36, 48]
-        en_rango = HORAS_MIN_ART19 < v239 <= HORAS_MAX_ART19
-        logger.debug(f"[V1599] Legajo {id_legajo}: ¿Horas en ({HORAS_MIN_ART19}, {HORAS_MAX_ART19}]? {en_rango} ({v239})")
-        
-        if not en_rango:
-            logger.debug(f"[V1599] Legajo {id_legajo}: ✗ NO APLICA - Horas fuera de rango")
+        if not (HORAS_MIN_ART19 < v239 <= HORAS_MAX_ART19):
+            logger.debug(f"[V1599] Legajo {id_legajo}: ✗ Horas {v239} fuera de rango ({HORAS_MIN_ART19}, {HORAS_MAX_ART19}]")
             return None
 
         # 8. Calcular porcentaje
-        porcentaje = 0.0
         if v239 == HORAS_MAX_ART19:  # 48 horas exactas
             porcentaje = CONSTANTES['PORCENTAJE_MAX_ART19']
-            logger.debug(f"[V1599] Legajo {id_legajo}: Horas == 48 → {porcentaje}%")
         else:  # Entre 36 y 48 (proporcional)
             porcentaje = CONSTANTES['PORCENTAJE_MAX_ART19'] * (v239 / HORAS_BASE_CALCULO_ART19)
-            logger.debug(f"[V1599] Legajo {id_legajo}: Cálculo proporcional: 25% * ({v239} / {HORAS_BASE_CALCULO_ART19}) = {porcentaje:.4f}%")
 
         resultado = round(porcentaje, 4)
-        logger.info(f"[V1599] Legajo {id_legajo}: ✓ APLICA - Porcentaje art.19 = {resultado}%")
         return resultado
 
     except KeyError as ke:
-        logger.error(f"[V1599] Legajo {id_legajo}: Falta campo clave - {str(ke)}")
-        logger.error(traceback.format_exc())
+        logger.error(f"[V1599] Legajo {id_legajo}: Falta campo - {str(ke)}")
         return None
     except TypeError as te:
-        logger.error(f"Legajo {id_legajo}: Error de tipo en los datos al calcular 1599. Detalles: {str(te)}")
-        logger.error(traceback.format_exc())
+        logger.error(f"[V1599] Legajo {id_legajo}: Error de tipo - {str(te)}")
         return None
     except Exception as e:
-        logger.error(f"Legajo {id_legajo}: Error inesperado al calcular 1599. Detalles: {str(e)}")
-        logger.error(traceback.format_exc())
+        logger.error(f"[V1599] Legajo {id_legajo}: Error - {str(e)}")
         return None
 
 
@@ -2571,52 +2518,27 @@ def calcular_dias_especiales(legajo: Dict[str, Any], v1242: int) -> Optional[int
     try:
         # 1. Obtener y normalizar datos
         datos = legajo.get("datos_personales", {})
-        puesto_raw = datos.get("puesto")
-        puesto = normalizar_texto(puesto_raw)
+        puesto = normalizar_texto(datos.get("puesto"))
         dias_semana_set = set(legajo.get("horario", {}).get("resumen", {}).get("dias_trabajo", []))
 
-        logger.debug(f"[V1131] Legajo {id_legajo}: Puesto = '{puesto_raw}' (normalizado: '{puesto}')")
-        logger.debug(f"[V1131] Legajo {id_legajo}: Días trabajo = {dias_semana_set}")
-        logger.debug(f"[V1131] Legajo {id_legajo}: V1242 = {v1242}")
-
         # 2. Condición Especial: Horario Sadofe
-        es_sadofe = dias_semana_set == {5, 6, 7}
-        logger.debug(f"[V1131] Legajo {id_legajo}: ¿Días == Sadofe [5,6,7]? {es_sadofe}")
-        
-        if es_sadofe:
-            logger.info(f"[V1131] Legajo {id_legajo}: ✓ APLICA - Horario Sadofe → retorna 10")
+        if dias_semana_set == {5, 6, 7}:
             return 10
             
         # 3. Condición Especial: Horario Lu-Ma-Mi
-        es_lu_ma_mi = dias_semana_set == {0, 1, 2}
-        logger.debug(f"[V1131] Legajo {id_legajo}: ¿Días == Lu-Ma-Mi [0,1,2]? {es_lu_ma_mi}")
-        
-        if es_lu_ma_mi:
-            logger.info(f"[V1131] Legajo {id_legajo}: ✓ APLICA - Horario Lu-Ma-Mi → retorna 10")
+        if dias_semana_set == {0, 1, 2}:
             return 10
 
-        # 4. Otras condiciones (solo si no es Sadofe ni Lu-Ma-Mi)
-        v1242_menor_22 = v1242 < 22
-        es_profesional = puesto in valores_profesionales_para_comparacion
-        trabaja_feriado = 7 in dias_semana_set
-        
-        logger.debug(f"[V1131] Legajo {id_legajo}: ¿V1242 < 22? {v1242_menor_22}")
-        logger.debug(f"[V1131] Legajo {id_legajo}: ¿Puesto profesional? {es_profesional}")
-        logger.debug(f"[V1131] Legajo {id_legajo}: ¿Trabaja día 7 (feriado)? {trabaja_feriado}")
-        
-        aplica_otras_condiciones = v1242_menor_22 or es_profesional or trabaja_feriado
-        
-        if aplica_otras_condiciones:
-            logger.info(f"[V1131] Legajo {id_legajo}: ✓ APLICA - Otras condiciones → retorna v1242 ({v1242})")
+        # 4. Otras condiciones
+        if v1242 < 22 or puesto in valores_profesionales_para_comparacion or 7 in dias_semana_set:
             return v1242
 
-        # 5. No aplica ninguna condición
-        logger.info(f"[V1131] Legajo {id_legajo}: ✗ NO APLICA - Ninguna condición cumplida")
+        # 5. No aplica
+        logger.debug(f"[V1131] Legajo {id_legajo}: ✗ Días={dias_semana_set}, V1242={v1242}")
         return None
         
     except Exception as e:
-        logger.error(f"[V1131] Legajo {id_legajo}: Error calculando días especiales - {str(e)}")
-        logger.error(traceback.format_exc())
+        logger.error(f"[V1131] Legajo {id_legajo}: Error - {str(e)}")
         return None
 
 def aplicar_proporcion_lavado(legajo: Dict[str, Any]) -> bool:
@@ -2637,75 +2559,50 @@ def aplicar_proporcion_lavado(legajo: Dict[str, Any]) -> bool:
     id_legajo = legajo.get('id_legajo', 'N/A')
 
     try:
-        # 1. Validar datos_personales
+        # 1. Validar y extraer datos
         datos_personales = legajo.get('datos_personales')
         if not isinstance(datos_personales, dict):
-            logger.debug(f"[V1673] Legajo {id_legajo}: ✗ NO APLICA - datos_personales no es diccionario")
+            logger.debug(f"[V1673] Legajo {id_legajo}: ✗ datos_personales inválido")
             return False
 
-        # 2. Extraer y normalizar puesto
-        puesto_raw = datos_personales.get('puesto')
-        puesto_normalizado = normalizar_texto(puesto_raw)
-        logger.debug(f"[V1673] Legajo {id_legajo}: Puesto = '{puesto_raw}' (normalizado: '{puesto_normalizado}')")
+        puesto_normalizado = normalizar_texto(datos_personales.get('puesto'))
         
-        puesto_objetivo = normalizar_texto("OPERARIO DE LOGISTICA")
-        es_operario_logistica = puesto_normalizado == puesto_objetivo
-        logger.debug(f"[V1673] Legajo {id_legajo}: ¿Puesto == '{puesto_objetivo}'? {es_operario_logistica}")
-        
-        if not es_operario_logistica:
-            logger.debug(f"[V1673] Legajo {id_legajo}: ✗ NO APLICA - Puesto no es 'Operario de Logística'")
+        if puesto_normalizado != normalizar_texto("OPERARIO DE LOGISTICA"):
+            logger.debug(f"[V1673] Legajo {id_legajo}: ✗ Puesto no es 'Operario de Logística'")
             return False
 
-        # 3. Extraer y normalizar subsector
         sector_data = datos_personales.get('sector')
         if not isinstance(sector_data, dict):
-            logger.debug(f"[V1673] Legajo {id_legajo}: ✗ NO APLICA - sector no es diccionario")
+            logger.debug(f"[V1673] Legajo {id_legajo}: ✗ sector inválido")
             return False
 
-        subsector_raw = sector_data.get('subsector')
-        subsector_normalizado = normalizar_texto(subsector_raw)
-        logger.debug(f"[V1673] Legajo {id_legajo}: Subsector = '{subsector_raw}' (normalizado: '{subsector_normalizado}')")
+        subsector_normalizado = normalizar_texto(sector_data.get('subsector'))
         
-        subsector_objetivo = normalizar_texto("INTERIOR")
-        es_interior = subsector_normalizado == subsector_objetivo
-        logger.debug(f"[V1673] Legajo {id_legajo}: ¿Subsector == '{subsector_objetivo}'? {es_interior}")
-        
-        if not es_interior:
-            logger.debug(f"[V1673] Legajo {id_legajo}: ✗ NO APLICA - Subsector no es 'Interior'")
+        if subsector_normalizado != normalizar_texto("INTERIOR"):
+            logger.debug(f"[V1673] Legajo {id_legajo}: ✗ Subsector no es 'Interior'")
             return False
 
-        # 4. Validar total horas semanales
-        horario_data = legajo.get('horario', {})
-        resumen_data = horario_data.get('resumen', {})
-        horas_raw = resumen_data.get('total_horas_semanales')
-        
-        logger.debug(f"[V1673] Legajo {id_legajo}: Total horas semanales raw = '{horas_raw}'")
+        # 2. Validar horas
+        horas_raw = legajo.get('horario', {}).get('resumen', {}).get('total_horas_semanales')
         
         if horas_raw is None:
-            logger.debug(f"[V1673] Legajo {id_legajo}: ✗ NO APLICA - total_horas_semanales es None")
+            logger.debug(f"[V1673] Legajo {id_legajo}: ✗ total_horas_semanales None")
             return False
 
         try:
-            total_horas_semanales = float(horas_raw)
-            logger.debug(f"[V1673] Legajo {id_legajo}: Total horas semanales = {total_horas_semanales}")
-        except (ValueError, TypeError) as e:
-            logger.debug(f"[V1673] Legajo {id_legajo}: ✗ NO APLICA - Error convirtiendo horas '{horas_raw}' a float: {e}")
+            total_horas = float(horas_raw)
+        except (ValueError, TypeError):
+            logger.debug(f"[V1673] Legajo {id_legajo}: ✗ Horas inválidas")
             return False
 
-        es_menor_35 = total_horas_semanales < 35.0
-        logger.debug(f"[V1673] Legajo {id_legajo}: ¿Horas < 35? {es_menor_35} ({total_horas_semanales} < 35)")
-        
-        if not es_menor_35:
-            logger.debug(f"[V1673] Legajo {id_legajo}: ✗ NO APLICA - Horas ({total_horas_semanales}) >= 35")
+        if total_horas >= 35.0:
+            logger.debug(f"[V1673] Legajo {id_legajo}: ✗ Horas {total_horas} >= 35")
             return False
 
-        # 5. Todas las condiciones cumplidas
-        logger.info(f"[V1673] Legajo {id_legajo}: ✓ APLICA - Adicional lavado uniforme")
         return True
 
     except Exception as e:
-        logger.error(f"[V1673] Legajo {id_legajo}: Error validando adicional lavado - {e}")
-        logger.error(traceback.format_exc())
+        logger.error(f"[V1673] Legajo {id_legajo}: Error - {e}")
         return False
 
 # ==============================
