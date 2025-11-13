@@ -19,6 +19,82 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# ----------------- FUNCIÓN PARA COLOREAR LOGS -----------------
+def colorear_log(log_line: str) -> str:
+    """
+    Convierte una línea de log en HTML con colores según el nivel y contenido.
+    
+    Args:
+        log_line: Línea de log en formato texto
+        
+    Returns:
+        HTML string con colores aplicados
+    """
+    # Escapar HTML para evitar inyección
+    import html
+    line = html.escape(log_line)
+    
+    # Detectar nivel de log
+    if " - ERROR - " in line or "ERROR CRÍTICO" in line:
+        color = "#FF6B6B"  # Rojo
+        weight = "bold"
+    elif " - WARNING - " in line:
+        color = "#FFA500"  # Naranja
+        weight = "normal"
+    elif " - INFO - " in line:
+        # Detectar si es variable CALCULADA o NO CALCULADA
+        if "✓ CALCULADA" in line:
+            color = "#4CAF50"  # Verde
+            weight = "bold"
+        elif "✗ NO CALCULADA" in line:
+            color = "#FF6B6B"  # Rojo
+            weight = "bold"
+        elif "INICIANDO CÁLCULO" in line or "RESUMEN" in line:
+            color = "#00BCD4"  # Cyan
+            weight = "bold"
+        else:
+            color = "#E0E0E0"  # Gris claro
+            weight = "normal"
+    elif " - DEBUG - " in line:
+        # Logs de debug con prefijos [VXX]
+        if "[V" in line and "✗" in line:
+            color = "#FF9999"  # Rojo claro
+            weight = "normal"
+        else:
+            color = "#90CAF9"  # Azul claro
+            weight = "normal"
+    else:
+        color = "#CCCCCC"  # Gris por defecto
+        weight = "normal"
+    
+    return f'<span style="color: {color}; font-weight: {weight}; font-family: monospace; font-size: 12px;">{line}</span>'
+
+# ----------------- FUNCIÓN PARA MOSTRAR LOGS CON COLORES -----------------
+def mostrar_logs_coloreados(logs: list, max_lines: int = None):
+    """
+    Muestra logs con colores usando st.markdown.
+    
+    Args:
+        logs: Lista de líneas de log
+        max_lines: Número máximo de líneas a mostrar (None = todas)
+    """
+    if not logs:
+        st.warning("No hay logs para mostrar")
+        return
+    
+    # Limitar número de líneas si es necesario
+    logs_a_mostrar = logs[-max_lines:] if max_lines else logs
+    
+    # Convertir cada línea a HTML coloreado
+    html_lines = [colorear_log(log) for log in logs_a_mostrar]
+    
+    # Unir y mostrar con markdown
+    html_content = "<br>".join(html_lines)
+    st.markdown(
+        f'<div style="background-color: #1E1E1E; padding: 15px; border-radius: 5px; overflow-x: auto; max-height: 500px; overflow-y: auto;">{html_content}</div>',
+        unsafe_allow_html=True
+    )
+
 # ----------------- CLASE HANDLER PARA LOGS -----------------
 class StreamlitLogHandler(logging.Handler):
     def __init__(self, logs_list: List[str]):
@@ -379,19 +455,19 @@ if uploaded_file and debug_mode:
 
         with st.expander(f"🟨 Ver solo Warnings ({len(warnings_list)})", expanded=False):
             if warnings_list:
-                st.code("\n".join(warnings_list), language="log")
+                mostrar_logs_coloreados(warnings_list)
             else:
                 st.info("Sin warnings registrados en esta corrida.")
 
         with st.expander(f"🟥 Ver solo Errores/Críticos ({len(errores_list)})", expanded=False):
             if errores_list:
-                st.code("\n".join(errores_list), language="log")
+                mostrar_logs_coloreados(errores_list)
             else:
                 st.info("Sin errores/críticos registrados en esta corrida.")
 
         with st.expander("📜 Ver todos los logs", expanded=False):
             if logs_nuevos:
-                st.code("\n".join(logs_nuevos), language="log")
+                mostrar_logs_coloreados(logs_nuevos)
             else:
                 st.warning("No se generaron nuevos logs durante el procesamiento")
 
