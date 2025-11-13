@@ -55,18 +55,18 @@ def json_a_excel_streamlit(ruta_json: str, nombre_excel: str = "variables_calcul
         logger_callback(f"Ocurrió un error crítico procesando el JSON: {e}")
     return None
 
-# --- Códigos de Color ANSI para Terminal ---
-COLOR_RESET = "\033[0m"
-COLOR_BLACK = "\033[30m"
-COLOR_RED = "\033[91m"
-COLOR_GREEN = "\033[92m"
-COLOR_YELLOW = "\033[93m"
-COLOR_BLUE = "\033[94m"
-COLOR_MAGENTA = "\033[95m"
-COLOR_CYAN = "\033[96m"
-COLOR_WHITE = "\033[97m"
-COLOR_BOLD = "\033[1m"
-COLOR_UNDERLINE = "\033[4m"
+# --- Códigos de Color ANSI (deshabilitados para Streamlit) ---
+COLOR_RESET = ""
+COLOR_BLACK = ""
+COLOR_RED = ""
+COLOR_GREEN = ""
+COLOR_YELLOW = ""
+COLOR_BLUE = ""
+COLOR_MAGENTA = ""
+COLOR_CYAN = ""
+COLOR_WHITE = ""
+COLOR_BOLD = ""
+COLOR_UNDERLINE = ""
 
 
 def normalizar_texto(texto: Any) -> str:
@@ -330,7 +330,7 @@ CATALOGO_VARIABLES = {
 
 def log_variable_calculada(id_legajo: Any, cod_variable: int, valor: Any, razon: str = "") -> None:
     """
-    Log estandarizado para variables CALCULADAS (en verde y negrita).
+    Log estandarizado para variables CALCULADAS.
     
     Args:
         id_legajo: ID del legajo
@@ -341,17 +341,12 @@ def log_variable_calculada(id_legajo: Any, cod_variable: int, valor: Any, razon:
     nombre_var = CATALOGO_VARIABLES.get(cod_variable, f"V{cod_variable}")
     razon_texto = f" - {razon}" if razon else ""
     
-    mensaje = (
-        f"{COLOR_BOLD}{COLOR_GREEN}"
-        f"V{cod_variable} ({nombre_var}): ✓ CALCULADA = {valor}"
-        f"{razon_texto}"
-        f"{COLOR_RESET}"
-    )
+    mensaje = f"V{cod_variable} ({nombre_var}): ✓ CALCULADA = {valor}{razon_texto}"
     logger.info(f"Legajo {id_legajo}: {mensaje}")
 
 def log_variable_no_calculada(id_legajo: Any, cod_variable: int, razon: str) -> None:
     """
-    Log estandarizado para variables NO CALCULADAS (en rojo y negrita).
+    Log estandarizado para variables NO CALCULADAS.
     
     Args:
         id_legajo: ID del legajo
@@ -360,11 +355,7 @@ def log_variable_no_calculada(id_legajo: Any, cod_variable: int, razon: str) -> 
     """
     nombre_var = CATALOGO_VARIABLES.get(cod_variable, f"V{cod_variable}")
     
-    mensaje = (
-        f"{COLOR_BOLD}{COLOR_RED}"
-        f"V{cod_variable} ({nombre_var}): ✗ NO CALCULADA - {razon}"
-        f"{COLOR_RESET}"
-    )
+    mensaje = f"V{cod_variable} ({nombre_var}): ✗ NO CALCULADA - {razon}"
     logger.debug(f"Legajo {id_legajo}: {mensaje}")
 
 def log_variable_evaluando(id_legajo: Any, cod_variable: int) -> None:
@@ -389,11 +380,11 @@ def log_resumen_variables(id_legajo: Any, variables: List[Tuple[int, Any]]) -> N
         variables: Lista de tuplas (codigo_variable, valor)
     """
     logger.info(f"\n{'='*80}")
-    logger.info(f"{COLOR_BOLD}{COLOR_CYAN}RESUMEN DE VARIABLES CALCULADAS - Legajo {id_legajo}{COLOR_RESET}")
+    logger.info(f"RESUMEN DE VARIABLES CALCULADAS - Legajo {id_legajo}")
     logger.info(f"{'='*80}")
     
     if not variables:
-        logger.info(f"{COLOR_YELLOW}No se calcularon variables para este legajo{COLOR_RESET}")
+        logger.info(f"No se calcularon variables para este legajo")
         return
     
     # Ordenar por código de variable
@@ -401,15 +392,11 @@ def log_resumen_variables(id_legajo: Any, variables: List[Tuple[int, Any]]) -> N
     
     for cod_var, valor in variables_ordenadas:
         nombre_var = CATALOGO_VARIABLES.get(cod_var, f"V{cod_var}")
-        mensaje = (
-            f"{COLOR_BOLD}{COLOR_GREEN}"
-            f"  ✓ V{cod_var:4d} ({nombre_var:40s}): {valor}"
-            f"{COLOR_RESET}"
-        )
+        mensaje = f"  ✓ V{cod_var:4d} ({nombre_var:40s}): {valor}"
         logger.info(mensaje)
     
     logger.info(f"{'='*80}")
-    logger.info(f"{COLOR_BOLD}Total variables calculadas: {len(variables)}{COLOR_RESET}\n")
+    logger.info(f"Total variables calculadas: {len(variables)}\n")
 
 # ==============================
 # FUNCIONES PRINCIPALES
@@ -638,7 +625,7 @@ def calcular_variables(legajo: Dict[str, Any]) -> List[Tuple[int, Any]]:
     
     try:
         logger.info(f"\n{'='*80}")
-        logger.info(f"{COLOR_BOLD}{COLOR_CYAN}INICIANDO CÁLCULO - Legajo {id_legajo}{COLOR_RESET}")
+        logger.info(f"INICIANDO CÁLCULO - Legajo {id_legajo}")
         logger.info(f"{'='*80}\n")
 
         # ==========================================
@@ -881,8 +868,7 @@ def calcular_variables(legajo: Dict[str, Any]) -> List[Tuple[int, Any]]:
         return variables
 
     except Exception as e:
-        logger.error(f"{COLOR_BOLD}{COLOR_RED}ERROR CRÍTICO en legajo {id_legajo}: {str(e)}{COLOR_RESET}", 
-                    exc_info=True)
+        logger.error(f"ERROR CRÍTICO en legajo {id_legajo}: {str(e)}", exc_info=True)
         return []
     
 # FUNCIONES DE VALIDACIÓN
