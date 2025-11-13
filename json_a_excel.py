@@ -1372,17 +1372,18 @@ def obtener_horas_nocturnas(legajo: Dict[str, Any], es_guardia: bool) -> float:
     Returns:
         float: Horas nocturnas MENSUALES (horas_semanales × 4.33)
     """
+    id_legajo = legajo.get('id_legajo', 'N/A')
+    
     # 1. Guardias no acumulan horas nocturnas
     if es_guardia:
-        logger.debug(f"Legajo {legajo.get('id_legajo', 'N/A')}: Es guardia - horas nocturnas=0")
+        logger.debug(f"[V1157] Legajo {id_legajo}: ✗ Es guardia → horas nocturnas=0")
         return 0.0
     
     try:
         # 2. Obtener y validar horas semanales de forma robusta
         horas_semanales_raw = legajo.get('horario', {}).get('resumen', {}).get('total_horas_nocturnas', 0)
         
-        # Log de depuración para verificar el valor extraído
-        logger.debug(f"Legajo {legajo.get('id_legajo', 'N/A')}: Horas nocturnas semanales 'raw' extraídas: {horas_semanales_raw}")
+        logger.debug(f"[V1157] Legajo {id_legajo}: ✓ Horas nocturnas semanales raw={horas_semanales_raw}")
         
         horas_semanales = float(horas_semanales_raw)
         
@@ -1390,19 +1391,25 @@ def obtener_horas_nocturnas(legajo: Dict[str, Any], es_guardia: bool) -> float:
         horas_semanales_validas = max(0.0, min(horas_semanales, 168.0))
         
         if abs(horas_semanales_validas - horas_semanales) > 0.01:  # Tolerancia para floats
-            logger.warning(f"Legajo {legajo.get('id_legajo', 'N/A')}: Ajustadas horas nocturnas semanales {horas_semanales} → {horas_semanales_validas}")
+            logger.warning(f"[V1157] Legajo {id_legajo}: ⚠ Ajustadas horas {horas_semanales} → {horas_semanales_validas}")
         
         # 4. MULTIPLICAR POR 4.33 para obtener horas mensuales
         horas_mensuales = round(horas_semanales_validas * 4.33, 2)
         
-        logger.debug(f"Legajo {legajo.get('id_legajo', 'N/A')}: Horas nocturnas semanales = {horas_semanales_validas}, mensuales (×4.33) = {horas_mensuales}")
+        logger.debug(f"[V1157] Legajo {id_legajo}: ✓ Semanales={horas_semanales_validas} → Mensuales (×4.33)={horas_mensuales}")
+        
+        if horas_mensuales > 0:
+            logger.info(f"[V1157] Legajo {id_legajo}: ✓ RESULTADO = {horas_mensuales} horas")
+        else:
+            logger.debug(f"[V1157] Legajo {id_legajo}: ✗ Sin horas nocturnas")
+        
         return horas_mensuales
         
     except (TypeError, ValueError) as e:
-        logger.error(f"Legajo {legajo.get('id_legajo', 'N/A')}: Valor inválido en horas nocturnas - {str(e)}")
+        logger.error(f"[V1157] Legajo {id_legajo}: ERROR - Valor inválido - {str(e)}")
         return 0.0
     except Exception as e:
-        logger.error(f"Legajo {legajo.get('id_legajo', 'N/A')}: Error crítico - {str(e)}")
+        logger.error(f"[V1157] Legajo {id_legajo}: ERROR CRÍTICO - {str(e)}")
         logger.error(traceback.format_exc())
         return 0.0
     
@@ -1469,40 +1476,42 @@ def aplicar_adicional_nocturno(legajo: Dict[str, Any], horas_nocturnas: float, e
     """
     id_legajo = legajo.get('id_legajo', 'N/A')
     
-    # --- LOGS DE DEPURACIÓN AGREGADOS ---
-    logger.debug(f"Legajo {id_legajo}: Evaluando adicional nocturno. es_guardia={es_guardia}, horas_nocturnas={horas_nocturnas}")
+    logger.debug(f"[V1498] Legajo {id_legajo}: INICIO EVALUACIÓN")
+    logger.debug(f"[V1498] Legajo {id_legajo}:   - es_guardia={es_guardia}")
+    logger.debug(f"[V1498] Legajo {id_legajo}:   - horas_nocturnas={horas_nocturnas}")
 
     # 1. Excepciones rápidas (guardias o sin horas nocturnas)
     if es_guardia:
-        logger.debug(f"Legajo {id_legajo}: Excluido (es guardia) → Falso")
+        logger.debug(f"[V1498] Legajo {id_legajo}: ✗ Excluido (es guardia)")
         return False
     if horas_nocturnas <= 0:
-        logger.debug(f"Legajo {id_legajo}: Excluido (0 horas nocturnas) → Falso")
+        logger.debug(f"[V1498] Legajo {id_legajo}: ✗ Excluido (sin horas nocturnas)")
         return False
 
     try:
         # 2. Validar categoría
         categoria = legajo.get('contratacion', {}).get('categoria', '')
         
-        # --- LOG DE DEPURACIÓN PARA LA CATEGORÍA ---
-        logger.debug(f"Legajo {id_legajo}: Categoría a evaluar: '{categoria}'")
+        logger.debug(f"[V1498] Legajo {id_legajo}:   - Categoría='{categoria}'")
         
         if not categoria:
-            logger.warning(f"Legajo {id_legajo}: Categoría vacía → Falso")
+            logger.warning(f"[V1498] Legajo {id_legajo}: ⚠ Categoría vacía")
             return False
             
         # 3. Verificar convenio (DC = Dentro de Convenio)
         es_dc = str(categoria).lower().startswith('dc_')
         
-        logger.info(
-            f"Legajo {id_legajo}: "
-            f"Adicional nocturno {'APLICA' if es_dc else 'NO aplica'} "
-            f"(Categoría: {categoria}, Horas: {horas_nocturnas})"
-        )
+        logger.debug(f"[V1498] Legajo {id_legajo}:   - ¿Empieza con 'dc_'?: {es_dc}")
+        
+        if es_dc:
+            logger.info(f"[V1498] Legajo {id_legajo}: ✓ APLICA (DC, {horas_nocturnas}h)")
+        else:
+            logger.debug(f"[V1498] Legajo {id_legajo}: ✗ NO APLICA (Categoría '{categoria}' no es DC)")
+        
         return es_dc
         
     except Exception as e:
-        logger.error(f"Legajo {id_legajo}: Error crítico - {str(e)}")
+        logger.error(f"[V1498] Legajo {id_legajo}: ERROR CRÍTICO - {str(e)}")
         logger.error(traceback.format_exc())
         return False
 
@@ -1947,21 +1956,31 @@ def calcular_horas_mensuales(legajo: Dict[str, Any], v239: float) -> float:
         puesto = normalizar_texto(datos.get("puesto")) # <--- Aquí se normaliza el 'puesto' del legajo
         sector = normalizar_texto(datos.get("sector", {}).get("principal"))
 
-        logger.debug(f"DEBUG INICIO FUNCION: Legajo {id_legajo}, Puesto RAW='{datos.get('puesto')}', Puesto NORMALIZADO='{puesto}', Sector='{sector}', v239={v239}")
+        logger.debug(f"[V4] Legajo {id_legajo}: INICIO EVALUACIÓN")
+        logger.debug(f"[V4] Legajo {id_legajo}: ✓ Puesto raw='{datos.get('puesto')}' → normalizado='{puesto}'")
+        logger.debug(f"[V4] Legajo {id_legajo}: ✓ Sector normalizado='{sector}'")
+        logger.debug(f"[V4] Legajo {id_legajo}: ✓ v239 (horas semanales)={v239}")
 
         # 2. Casos especiales de 200 hs
-        if (
-            (sector == "cuat" and puesto == PUESTOS_ESPECIALES['TELEFONISTA'] and v239 == 35) or
-            (puesto == PUESTOS_ESPECIALES['RECEP_LAB'] and v239 == 35) or
-            (puesto == PUESTOS_ESPECIALES['TEC_CARDIO'] and v239 >= 35) or
-            (puesto == PUESTOS_ESPECIALES['OP_LOGISTICA'] and v239 >= 35) or
-            (sector == "atencion al cliente laboratorio" and puesto == "recepcionista" and v239 >= 35) or
-            (puesto == normalizar_texto("asistente tecnico") and v239 == 35)
-        ):
-            logger.info(f"Legajo {id_legajo}: Caso especial → 200 horas (Puesto + condición)")
+        condicion_1 = (sector == "cuat" and puesto == PUESTOS_ESPECIALES['TELEFONISTA'] and v239 == 35)
+        condicion_2 = (puesto == PUESTOS_ESPECIALES['RECEP_LAB'] and v239 == 35)
+        condicion_3 = (puesto == PUESTOS_ESPECIALES['TEC_CARDIO'] and v239 >= 35)
+        condicion_4 = (puesto == PUESTOS_ESPECIALES['OP_LOGISTICA'] and v239 >= 35)
+        condicion_5 = (sector == "atencion al cliente laboratorio" and puesto == "recepcionista" and v239 >= 35)
+        condicion_6 = (puesto == normalizar_texto("asistente tecnico") and v239 == 35)
+        
+        if condicion_1 or condicion_2 or condicion_3 or condicion_4 or condicion_5 or condicion_6:
+            logger.debug(f"[V4] Legajo {id_legajo}: ✓ Cumple caso especial 200hs:")
+            logger.debug(f"[V4] Legajo {id_legajo}:   - CUAT+Telefonista+35h: {condicion_1}")
+            logger.debug(f"[V4] Legajo {id_legajo}:   - Recep Lab+35h: {condicion_2}")
+            logger.debug(f"[V4] Legajo {id_legajo}:   - Téc Cardio+35h+: {condicion_3}")
+            logger.debug(f"[V4] Legajo {id_legajo}:   - Op Logística+35h+: {condicion_4}")
+            logger.debug(f"[V4] Legajo {id_legajo}:   - AtencLab+Recep+35h+: {condicion_5}")
+            logger.debug(f"[V4] Legajo {id_legajo}:   - Asist Téc+35h: {condicion_6}")
+            logger.info(f"[V4] Legajo {id_legajo}: ✓ RESULTADO = 200.00 horas")
             return 200.00
         else:
-            logger.debug(f"DEBUG: Legajo {id_legajo}: No cumple caso 200hs. Condición evaluada: {(sector == 'cuat' and puesto == PUESTOS_ESPECIALES['TELEFONISTA'] and v239 == 35)} || {(puesto == PUESTOS_ESPECIALES['RECEP_LAB'] and v239 == 35)} || {(puesto == PUESTOS_ESPECIALES['TEC_CARDIO'] and v239 >= 35)} || {(puesto == PUESTOS_ESPECIALES['OP_LOGISTICA'] and v239 >= 35)}")
+            logger.debug(f"[V4] Legajo {id_legajo}: ✗ No cumple casos especiales 200hs")
 
         # 3. Casos de puestos con piso 27 horas (bioquímicos, técnicos, etc.)
         puestos_piso_27 = [normalizar_texto(p) for p in [
@@ -1969,43 +1988,60 @@ def calcular_horas_mensuales(legajo: Dict[str, Any], v239: float) -> float:
             "TECNICO EXTRACCIONISTA", "BIOQUIMICO"
         ]]
 
+        logger.debug(f"[V4] Legajo {id_legajo}: Evaluando puestos piso 27h")
+        logger.debug(f"[V4] Legajo {id_legajo}:   - ¿Puesto en lista?: {puesto in puestos_piso_27}")
+        
         if puesto in puestos_piso_27:
+            logger.debug(f"[V4] Legajo {id_legajo}: ✓ Puesto con piso 27 reconocido: '{puesto}'")
             if 27 <= v239 <= 36:  # ✅ Rango exacto 27-36 → 156 horas
-                logger.info(f"Legajo {id_legajo}: Puesto con piso 27 reconocido, v239={v239} entre 27-36 → 156 horas")
+                logger.debug(f"[V4] Legajo {id_legajo}: ✓ v239={v239} está en rango [27-36]")
+                logger.info(f"[V4] Legajo {id_legajo}: ✓ RESULTADO = 156.00 horas")
                 return 156.00
             elif v239 < 27:  # ✅ Menos de 27 → proporcional 27 × 4.33
                 horas_proporcionales = round(27 * 4.33, 2)
-                logger.info(f"Legajo {id_legajo}: Puesto con piso 27, v239={v239} < 27 → proporcional {horas_proporcionales}")
+                logger.debug(f"[V4] Legajo {id_legajo}: ✓ v239={v239} < 27 → proporcional (27 × 4.33)")
+                logger.info(f"[V4] Legajo {id_legajo}: ✓ RESULTADO = {horas_proporcionales} horas")
                 return horas_proporcionales
             else:  # ✅ Más de 36 → continúa al siguiente caso
-                logger.debug(f"DEBUG: Legajo {id_legajo}: Puesto con piso 27, pero v239={v239} > 36, continúa evaluación")
+                logger.debug(f"[V4] Legajo {id_legajo}: ✓ v239={v239} > 36, continúa evaluación")
         else:
-            logger.debug(f"DEBUG: Legajo {id_legajo}: No es puesto con piso 27. Puesto '{puesto}' en {puestos_piso_27}: {puesto in puestos_piso_27}")
+            logger.debug(f"[V4] Legajo {id_legajo}: ✗ No es puesto piso 27")
 
         # 4. Casos de puestos técnicos con piso 18 horas
-        if (
-            puesto in [normalizar_texto("TECNICO"), normalizar_texto("TECNICO PIVOT")]
-            and sector != SECTOR_EXCLUIDO_LABORATORIO
-            and 18 <= v239 <= 36
-        ):
-            logger.info(f"Legajo {id_legajo}: Puesto técnico 156 válido, v239={v239}")
+        logger.debug(f"[V4] Legajo {id_legajo}: Evaluando técnicos piso 18h")
+        es_tecnico_pivot = puesto in [normalizar_texto("TECNICO"), normalizar_texto("TECNICO PIVOT")]
+        no_es_lab_excluido = sector != SECTOR_EXCLUIDO_LABORATORIO
+        en_rango_18_36 = 18 <= v239 <= 36
+        
+        logger.debug(f"[V4] Legajo {id_legajo}:   - ¿Es TECNICO/TECNICO PIVOT?: {es_tecnico_pivot}")
+        logger.debug(f"[V4] Legajo {id_legajo}:   - ¿Sector != '{SECTOR_EXCLUIDO_LABORATORIO}'?: {no_es_lab_excluido}")
+        logger.debug(f"[V4] Legajo {id_legajo}:   - ¿v239 en [18-36]?: {en_rango_18_36}")
+        
+        if es_tecnico_pivot and no_es_lab_excluido and en_rango_18_36:
+            logger.info(f"[V4] Legajo {id_legajo}: ✓ RESULTADO = 156.00 horas (técnico válido)")
             return 156.00
         else:
-            logger.debug(f"DEBUG: Legajo {id_legajo}: No cumple caso técnicos 156hs. Puesto '{puesto}' en tecnicos: {puesto in [normalizar_texto('TECNICO'), normalizar_texto('TECNICO PIVOT')]}. Sector '{sector}' != '{SECTOR_EXCLUIDO_LABORATORIO}': {sector != SECTOR_EXCLUIDO_LABORATORIO}. v239={v239}, en rango 18-36: {18 <= v239 <= 36}")
+            logger.debug(f"[V4] Legajo {id_legajo}: ✗ No cumple caso técnicos 156hs")
 
         # 5. Caso médicos (pago proporcional directo)
-        logger.debug(f"DEBUG: Legajo {id_legajo}: Evaluando Sección 5. Puesto='{puesto}'. Valores de comparación (re-normalizados al vuelo): {valores_profesionales_para_comparacion}. ¿Puesto está en valores?: {puesto in valores_profesionales_para_comparacion}")
+        logger.debug(f"[V4] Legajo {id_legajo}: Evaluando profesionales de salud")
+        logger.debug(f"[V4] Legajo {id_legajo}:   - Puesto '{puesto}' en lista profesionales: {puesto in valores_profesionales_para_comparacion}")
+        
         if puesto in valores_profesionales_para_comparacion:
-            logger.info(f"Legajo {id_legajo}: Profesional de la salud, pago proporcional")
-            return round(v239 * 4.33, 2)
+            resultado_proporcional = round(v239 * 4.33, 2)
+            logger.debug(f"[V4] Legajo {id_legajo}: ✓ Profesional de salud → {v239} × 4.33 = {resultado_proporcional}")
+            logger.info(f"[V4] Legajo {id_legajo}: ✓ RESULTADO = {resultado_proporcional} horas")
+            return resultado_proporcional
         else:
-            logger.debug(f"DEBUG: Legajo {id_legajo}: NO cumple condición de profesional de la salud en Sección 5.")
+            logger.debug(f"[V4] Legajo {id_legajo}: ✗ No es profesional de salud")
 
         # 6. Caso general con pisos (nuevo criterio) - CORREGIDO
         piso = PISOS_HORARIOS.get(normalizar_texto("GENERAL"), 36.0)
         sector_normalizado = normalizar_texto(sector)
         puesto_normalizado = normalizar_texto(puesto)
 
+        logger.debug(f"[V4] Legajo {id_legajo}: Determinando piso horario (inicial={piso}h)")
+        
         # Definir sectores y puestos de laboratorio
         puestos_lab_piso_27 = [normalizar_texto(p) for p in [
             "AUXILIAR TECNICO", "TECNICO DE LABORATORIO", 
@@ -2020,9 +2056,15 @@ def calcular_horas_mensuales(legajo: Dict[str, Any], v239: float) -> float:
         ]
 
         # 6.1 Sector LABORATORIO con puesto específico → piso 27
-        if any(sector_normalizado == s for s in sectores_laboratorio) and puesto_normalizado in puestos_lab_piso_27:
+        es_sector_lab = any(sector_normalizado == s for s in sectores_laboratorio)
+        es_puesto_lab_27 = puesto_normalizado in puestos_lab_piso_27
+        
+        logger.debug(f"[V4] Legajo {id_legajo}:   - ¿Sector laboratorio?: {es_sector_lab}")
+        logger.debug(f"[V4] Legajo {id_legajo}:   - ¿Puesto lab piso 27?: {es_puesto_lab_27}")
+        
+        if es_sector_lab and es_puesto_lab_27:
             piso = 27.0
-            logger.debug(f"DEBUG: Legajo {id_legajo}: Sector laboratorio con puesto específico → piso 27h")
+            logger.debug(f"[V4] Legajo {id_legajo}: ✓ Sector lab + puesto específico → piso={piso}h")
 
         # 6.2 Sector IMÁGENES con puesto válido
         elif (
@@ -2030,23 +2072,26 @@ def calcular_horas_mensuales(legajo: Dict[str, Any], v239: float) -> float:
             and puesto_normalizado in ConfigBioimagenes.PUESTOS_VALIDOS
         ):
             piso = PISOS_HORARIOS.get(normalizar_texto("IMAGENES"), 18.0)
-            logger.debug(f"DEBUG: Legajo {id_legajo}: Sector imágenes → piso {piso}h")
+            logger.debug(f"[V4] Legajo {id_legajo}: ✓ Sector imágenes → piso={piso}h")
 
-        logger.debug(f"DEBUG: Legajo {id_legajo}: Piso final determinado: {piso}")
+        logger.debug(f"[V4] Legajo {id_legajo}: Piso final determinado = {piso}h")
 
         # 7. Si está por debajo del piso → proporcional
         if v239 < piso:
-            logger.debug(f"Legajo {id_legajo}: Horas semanales {v239} debajo del piso {piso}, se liquida proporcional.")
-            return round(piso * 4.33, 2)
+            resultado_piso = round(piso * 4.33, 2)
+            logger.debug(f"[V4] Legajo {id_legajo}: ✓ v239={v239} < piso={piso} → proporcional ({piso} × 4.33)")
+            logger.info(f"[V4] Legajo {id_legajo}: ✓ RESULTADO = {resultado_piso} horas")
+            return resultado_piso
         else:
-            logger.debug(f"DEBUG: Legajo {id_legajo}: Horas semanales {v239} NO debajo del piso {piso}. Pasa al caso general.")
+            logger.debug(f"[V4] Legajo {id_legajo}: ✗ v239={v239} NO está debajo del piso {piso}h")
 
         # 8. Caso general por defecto
-        logger.info(f"Legajo {id_legajo}: Sin coincidencias especiales → se asignan 200 hs mensuales.")
+        logger.info(f"[V4] Legajo {id_legajo}: ✓ RESULTADO = 200.00 horas (caso general)")
         return 200.00
 
     except Exception as e:
-        logger.error(f"Legajo {id_legajo}: Error calculando horas mensuales - {str(e)}")
+        logger.error(f"[V4] Legajo {id_legajo}: ERROR CRÍTICO - {str(e)}")
+        logger.error(traceback.format_exc())
         return 200.00
 
 def calcular_jornada_reducida(legajo: Dict[str, Any], es_guardia: bool) -> Optional[float]:

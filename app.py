@@ -32,6 +32,7 @@ def colorear_log(log_line: str) -> str:
     """
     # Escapar HTML para evitar inyección
     import html
+    import re
     line = html.escape(log_line)
     
     # Detectar nivel de log
@@ -56,12 +57,32 @@ def colorear_log(log_line: str) -> str:
             color = "#E0E0E0"  # Gris claro
             weight = "normal"
     elif " - DEBUG - " in line:
-        # Logs de debug con prefijos [VXX]
-        if "[V" in line and "✗" in line:
+        # Detectar patrones de debug avanzado
+        # Patrón 1: [VXX] seguido de cualquier contenido con ✗
+        if re.search(r'\[V\d+\]', line) and "✗" in line:
             color = "#FF9999"  # Rojo claro
             weight = "normal"
+        # Patrón 2: Variables clave (4, 1167, 1157, 1498) - siempre destacadas
+        elif re.search(r'\[V?(4|1167|1157|1498)\]', line):
+            if "✗" in line or "NO" in line.upper():
+                color = "#FF9999"  # Rojo claro si hay error/negación
+            else:
+                color = "#4CAF50"  # Verde si es positivo
+            weight = "normal"
+        # Patrón 3: Cualquier [VXX] con contenido (captura general)
+        elif re.search(r'\[V\d+\]', line) or re.search(r'\[[a-z_]+\]', line, re.IGNORECASE):
+            color = "#90CAF9"  # Azul claro para debug general
+            weight = "normal"
+        # Patrón 4: Debug con símbolos ✗ (aunque no tenga [VXX])
+        elif "✗" in line:
+            color = "#FF9999"  # Rojo claro
+            weight = "normal"
+        # Patrón 5: Debug con símbolos ✓ (aunque no tenga [VXX])
+        elif "✓" in line:
+            color = "#4CAF50"  # Verde
+            weight = "normal"
         else:
-            color = "#90CAF9"  # Azul claro
+            color = "#90CAF9"  # Azul claro por defecto para DEBUG
             weight = "normal"
     else:
         color = "#CCCCCC"  # Gris por defecto
@@ -94,6 +115,47 @@ def mostrar_logs_coloreados(logs: list, max_lines: int = None):
         f'<div style="background-color: #1E1E1E; padding: 15px; border-radius: 5px; overflow-x: auto; max-height: 500px; overflow-y: auto;">{html_content}</div>',
         unsafe_allow_html=True
     )
+
+# ----------------- FUNCIÓN PARA EXTRAER LEGAJOS DE LOGS -----------------
+def extraer_legajos_de_logs(logs: list) -> list:
+    """
+    Extrae los IDs de legajo únicos de los logs.
+    
+    Args:
+        logs: Lista de líneas de log
+        
+    Returns:
+        Lista ordenada de legajos únicos encontrados
+    """
+    import re
+    legajos = set()
+    
+    # Patrones comunes: "Legajo 12345:" o "Legajo {id_legajo}:"
+    patron = r'Legajo\s+(\d+):'
+    
+    for log in logs:
+        match = re.search(patron, log)
+        if match:
+            legajos.add(match.group(1))
+    
+    return sorted(list(legajos), key=lambda x: int(x))
+
+# ----------------- FUNCIÓN PARA FILTRAR LOGS POR LEGAJO -----------------
+def filtrar_logs_por_legajo(logs: list, legajo: str) -> list:
+    """
+    Filtra logs que contengan el ID de legajo especificado.
+    
+    Args:
+        logs: Lista de líneas de log
+        legajo: ID del legajo a filtrar
+        
+    Returns:
+        Lista de logs filtrados
+    """
+    if not legajo or legajo == "Todos":
+        return logs
+    
+    return [log for log in logs if f"Legajo {legajo}:" in log]
 
 # ----------------- CLASE HANDLER PARA LOGS -----------------
 class StreamlitLogHandler(logging.Handler):
@@ -455,19 +517,89 @@ if uploaded_file and debug_mode:
 
         with st.expander(f"🟨 Ver solo Warnings ({len(warnings_list)})", expanded=False):
             if warnings_list:
-                mostrar_logs_coloreados(warnings_list)
+                # Extraer legajos únicos de warnings
+                legajos_warn = extraer_legajos_de_logs(warnings_list)
+                
+                if legajos_warn:
+                    col1, col2 = st.columns([3, 1])
+                    with col1:
+                        opciones_warn = ["Todos"] + legajos_warn
+                        legajo_warn_sel = st.selectbox(
+                            "Filtrar por legajo:",
+                            options=opciones_warn,
+                            index=0,
+                            key="selector_legajo_warnings"
+                        )
+                    with col2:
+                        st.metric("Legajos", len(legajos_warn))
+                    
+                    warnings_filtrados = filtrar_logs_por_legajo(warnings_list, legajo_warn_sel)
+                    if legajo_warn_sel != "Todos":
+                        st.info(f"Mostrando {len(warnings_filtrados)} warnings del legajo {legajo_warn_sel}")
+                    mostrar_logs_coloreados(warnings_filtrados)
+                else:
+                    mostrar_logs_coloreados(warnings_list)
             else:
                 st.info("Sin warnings registrados en esta corrida.")
 
         with st.expander(f"🟥 Ver solo Errores/Críticos ({len(errores_list)})", expanded=False):
             if errores_list:
-                mostrar_logs_coloreados(errores_list)
+                # Extraer legajos únicos de errores
+                legajos_err = extraer_legajos_de_logs(errores_list)
+                
+                if legajos_err:
+                    col1, col2 = st.columns([3, 1])
+                    with col1:
+                        opciones_err = ["Todos"] + legajos_err
+                        legajo_err_sel = st.selectbox(
+                            "Filtrar por legajo:",
+                            options=opciones_err,
+                            index=0,
+                            key="selector_legajo_errores"
+                        )
+                    with col2:
+                        st.metric("Legajos", len(legajos_err))
+                    
+                    errores_filtrados = filtrar_logs_por_legajo(errores_list, legajo_err_sel)
+                    if legajo_err_sel != "Todos":
+                        st.info(f"Mostrando {len(errores_filtrados)} errores del legajo {legajo_err_sel}")
+                    mostrar_logs_coloreados(errores_filtrados)
+                else:
+                    mostrar_logs_coloreados(errores_list)
             else:
                 st.info("Sin errores/críticos registrados en esta corrida.")
 
         with st.expander("📜 Ver todos los logs", expanded=False):
             if logs_nuevos:
-                mostrar_logs_coloreados(logs_nuevos)
+                # Extraer legajos únicos
+                legajos_disponibles = extraer_legajos_de_logs(logs_nuevos)
+                
+                # Selector de legajo
+                col1, col2 = st.columns([3, 1])
+                with col1:
+                    if legajos_disponibles:
+                        opciones = ["Todos"] + legajos_disponibles
+                        legajo_seleccionado = st.selectbox(
+                            "Filtrar por legajo:",
+                            options=opciones,
+                            index=0,
+                            key="selector_legajo_todos"
+                        )
+                    else:
+                        legajo_seleccionado = "Todos"
+                        st.info("No se detectaron legajos en los logs")
+                
+                with col2:
+                    if legajos_disponibles:
+                        st.metric("Legajos únicos", len(legajos_disponibles))
+                
+                # Filtrar y mostrar logs
+                logs_filtrados = filtrar_logs_por_legajo(logs_nuevos, legajo_seleccionado)
+                
+                if legajo_seleccionado != "Todos":
+                    st.info(f"Mostrando {len(logs_filtrados)} logs del legajo {legajo_seleccionado}")
+                
+                mostrar_logs_coloreados(logs_filtrados)
             else:
                 st.warning("No se generaron nuevos logs durante el procesamiento")
 
