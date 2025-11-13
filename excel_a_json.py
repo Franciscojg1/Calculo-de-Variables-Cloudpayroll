@@ -214,6 +214,14 @@ def apply_equivalences(text: str, equivalences: dict) -> str:
     """
     original_text = text
 
+    # PASO 1: Proteger "x medio" y "por medio" reemplazándolos con placeholder temporal
+    # Esto evita que " x " se convierta en " y miércoles "
+    PLACEHOLDER_XMEDIO = "___XMEDIO___"
+    PLACEHOLDER_PORMEDIO = "___PORMEDIO___"
+    
+    text = re.sub(r'\bx\s+medio\b', PLACEHOLDER_XMEDIO, text, flags=re.IGNORECASE)
+    text = re.sub(r'\bpor\s+medio\b', PLACEHOLDER_PORMEDIO, text, flags=re.IGNORECASE)
+
     # Normalize variantes súper flexibles de LaV
     text = re.sub(
         r'\b(?:l\s*[\.\-]?\s*a\s*[\.\-]?\s*v)\b',
@@ -238,6 +246,10 @@ def apply_equivalences(text: str, equivalences: dict) -> str:
         # Hacemos word boundary para no romper otras palabras
         pattern = r'\b' + re.escape(old) + r'\b'
         text = re.sub(pattern, new, text, flags=re.IGNORECASE)
+
+    # PASO FINAL: Restaurar los placeholders a " por medio"
+    text = text.replace(PLACEHOLDER_XMEDIO, ' por medio')
+    text = text.replace(PLACEHOLDER_PORMEDIO, ' por medio')
 
     logger.debug(f"DEBUG apply_equivalences_safe - Original: '{original_text}' -> Normalizado: '{text}'")
     return text
