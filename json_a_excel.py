@@ -2169,22 +2169,20 @@ def calcular_jornada_reducida(legajo: Dict[str, Any], es_guardia: bool) -> Optio
         # Si es sector RELACIONADO CON LABORATORIO y puesto específico → piso 27
         if any(sector == s for s in sectores_laboratorio) and puesto in puestos_lab_piso_27:
             piso = 27.0
-            logger.debug(f"[1167] Legajo {id_legajo}: Sector relacionado con laboratorio '{sector}' con puesto '{puesto}' → piso 27h")
+            logger.debug(f"[1167] Legajo {id_legajo}: Sector laboratorio + puesto técnico '{puesto}' → piso 27h")
 
         # --- Excepción Medicina Nuclear + Asistente Técnico ---
         elif sector == normalizar_texto("medicina nuclear") and puesto == normalizar_texto("asistente tecnico"):
             piso = PISOS_HORARIOS.get(normalizar_texto('GENERAL'), 36.0)
-            logger.debug(f"[1167] Legajo {id_legajo}: EXCEPCIÓN → Sector '{sector}' con puesto '{puesto}' → piso {piso}h (general)")
+            logger.debug(f"[1167] Legajo {id_legajo}: EXCEPCIÓN → Medicina Nuclear + Asist. Téc. → piso {piso}h (general)")
 
         elif sector in SECTORES_IMAGENES:
             piso = PISOS_HORARIOS.get(normalizar_texto('IMAGENES'), 36.0)
             logger.debug(f"[1167] Legajo {id_legajo}: Sector IMÁGENES → piso {piso}h")
-        elif any(sector == s for s in sectores_laboratorio):
-            piso = PISOS_HORARIOS.get(normalizar_texto('LABORATORIO'), 27.0)  # Default 27 para lab
-            logger.debug(f"[1167] Legajo {id_legajo}: Sector laboratorio general → piso {piso}h")
         else:
+            # TODOS los demás casos (incluyendo laboratorio sin puesto técnico) → piso general 36h
             piso = PISOS_HORARIOS.get(normalizar_texto('GENERAL'), 36.0)
-            logger.debug(f"[1167] Legajo {id_legajo}: Sector GENERAL → piso {piso}h")
+            logger.debug(f"[1167] Legajo {id_legajo}: Sector '{sector}' + puesto '{puesto}' → piso GENERAL {piso}h")
 
         logger.debug(f"[1167] Legajo {id_legajo}: Piso determinado: {piso}h")
 
