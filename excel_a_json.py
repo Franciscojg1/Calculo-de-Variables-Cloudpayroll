@@ -19,7 +19,8 @@ DAY_MAP = {
     "l": 0, "m": 1, "x": 2, "j": 3, "v": 4, "s": 5, "d": 6,
     "sábados": 5, "sabados": 5, "domingos": 6,
     "feriado": 7, "feriados": 7,
-    "safe": "sábado y feriado", "dofe": "domingo y feriado", "sadofe": "sábado y domingo y feriado"
+    "safe": "sábado y feriado", "dofe": "domingo y feriado", "sadofe": "sábado y domingo y feriado",
+    "sado": [5, 6], "sado.": [5, 6], "sabdom": [5, 6], "sab y dom": [5, 6], "sab-dom": [5, 6], "sáb y dom": [5, 6], "sáb-dom": [5, 6], "sab": 5, "sáb": 5, "sab.": 5, "sáb.": 5
 }
 
 DAY_NAMES = {
@@ -62,7 +63,8 @@ EQUIVALENCIAS_EXTRA = {
     " d ": " y domingo ",
     " l ": " y lunes ",
     " m ": " y martes ",
-    " x ": " y miércoles ",  # Usamos X para evitar conflicto con la M de martes
+    " mi ": " y miércoles ",  # Usamos X para evitar conflicto con la M de martes
+    " mie ": " y miércoles ",  # Usamos X para evitar conflicto con la M de martes
     " j ": " y jueves ",
     " v ": " y viernes ",
     # ===== FIN DE LA SOLUCIÓN DEFINITIVA =====
