@@ -511,14 +511,11 @@ def get_day_indices(day_words):
     while i < len(day_words):
         word = day_words[i].strip().lower()
 
-        # Expandir días compuestos tipo 'sábado y domingo', 'sábado y feriado', etc.
+        # Expandir cualquier string compuesto con 'y' (ej: 'sábado y domingo', 'sábado y domingo y feriado', etc.)
         if ' y ' in word:
             subwords = [w.strip() for w in word.split(' y ') if w.strip()]
-            for subword in subwords:
-                # Recursivo: procesar cada subword como si fuera un día individual
-                idx = DAY_MAP.get(subword)
-                if idx is not None:
-                    day_indices.add(idx)
+            sub_indices, _ = get_day_indices(subwords)
+            day_indices.update(sub_indices)
             i += 1
             continue
 
@@ -543,9 +540,14 @@ def get_day_indices(day_words):
             if (start_idx := DAY_MAP.get(start_word)) is not None and (end_idx := DAY_MAP.get(end_word)) is not None:
                 day_indices.update(range(min(start_idx, end_idx), max(start_idx, end_idx) + 1))
 
-        # Caso 4: Días individuales
+        # Caso 4: Días individuales o strings compuestos en el diccionario
         elif (idx := DAY_MAP.get(word)) is not None:
-            day_indices.add(idx)
+            if isinstance(idx, str) and 'y' in idx:
+                subwords = [w.strip() for w in idx.split('y') if w.strip()]
+                sub_indices, _ = get_day_indices(subwords)
+                day_indices.update(sub_indices)
+            else:
+                day_indices.add(idx)
 
         i += 1
 
