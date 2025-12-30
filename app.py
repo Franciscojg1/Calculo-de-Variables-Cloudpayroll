@@ -214,7 +214,7 @@ def setup_streamlit_logging(debug: bool):
         'watchdog.observers',
         'watchdog.observers.inotify_buffer',
     ]:
-        logging.getLogger(noisy).setLevel(logging.WARNING)
+        logging.getLogger(noisy).setLevel(logging.DEBUG)
 
 # ----------------- FUNCIÓN PARA MOSTRAR ESTADÍSTICAS -----------------
 def display_stats(stats: Dict[str, Any]):
