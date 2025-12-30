@@ -751,6 +751,7 @@ def calcular_resumen_horario(bloques, nombre_sede=None):
 
     # (El resto de la función para generar el resultado final permanece igual...)
     bloques_por_dia = {k: v for k, v in bloques_por_dia.items() if v}
+    logger.debug(f"[DEBUG BLOQUES_POR_DIA] Contenido final de bloques_por_dia: {bloques_por_dia}")
     resultado = {
         'total_horas_semanales': round(total_horas, 2),
         'total_horas_nocturnas': round(total_horas_nocturnas, 2),
