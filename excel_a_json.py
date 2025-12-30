@@ -611,8 +611,15 @@ def parse_schedule_string(schedule_str):
             day_phrase = match.group(1).strip()
             tokens = re.findall(r'[a-záéíóúñ]+-[a-záéíóúñ]+|[a-záéíóúñ]+|\d+', day_phrase)
             day_words = [w for w in tokens if w not in ['y', 'de']]
+            # Expande cualquier token con ' y ' en subpalabras para que get_day_indices reciba una lista plana
+            flat_day_words = []
+            for w in day_words:
+                if ' y ' in w:
+                    flat_day_words.extend([subw.strip() for subw in w.split(' y ') if subw.strip()])
+                else:
+                    flat_day_words.append(w)
 
-            current_dias, proportional_data = get_day_indices(day_words)
+            current_dias, proportional_data = get_day_indices(flat_day_words)
             if not current_dias:
                 logger.debug(f"DEBUG - No se obtuvieron días válidos para bloque {idx}, se ignora")
                 continue
