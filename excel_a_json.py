@@ -20,7 +20,7 @@ DAY_MAP = {
     "sábados": 5, "sabados": 5, "domingos": 6,
     "feriado": 7, "feriados": 7,
     "safe": "sábado y feriado", "dofe": "domingo y feriado", "sadofe": "sábado y domingo y feriado",
-    "sado": [5, 6], "sado.": [5, 6], "sabdom": [5, 6], "sab y dom": [5, 6], "sab-dom": [5, 6], "sáb y dom": [5, 6], "sáb-dom": [5, 6], "sab": 5, "sáb": 5, "sab.": 5, "sáb.": 5
+    "sado": "sábado y domingo", "sado.": "sábado y domingo", "sabdom": "sábado y domingo", "sab y dom": "sábado y domingo", "sab-dom": "sábado y domingo", "sáb y dom": "sábado y domingo", "sáb-dom": "sábado y domingo", "sab": 5, "sáb": 5, "sab.": 5, "sáb.": 5
 }
 
 DAY_NAMES = {
