@@ -507,8 +507,20 @@ def get_day_indices(day_words):
     """
     day_indices, proportional_data = set(), {}
     i = 0
+
     while i < len(day_words):
         word = day_words[i].strip().lower()
+
+        # Expandir días compuestos tipo 'sábado y domingo', 'sábado y feriado', etc.
+        if ' y ' in word:
+            subwords = [w.strip() for w in word.split(' y ') if w.strip()]
+            for subword in subwords:
+                # Recursivo: procesar cada subword como si fuera un día individual
+                idx = DAY_MAP.get(subword)
+                if idx is not None:
+                    day_indices.add(idx)
+            i += 1
+            continue
 
         # Caso 1: Sábados proporcionales (ej: "sábados 1")
         if word in ["sábado", "sabado", "sábados"] and i + 1 < len(day_words) and day_words[i + 1].isdigit():
