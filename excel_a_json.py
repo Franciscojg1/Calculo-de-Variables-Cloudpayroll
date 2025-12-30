@@ -342,11 +342,10 @@ def validar_fila_detallada(row):
         horario_str = normalizar_horario_input(str(horario))
 
         # Chequeo de días con límites de palabra (evita falsos positivos)
-        dia_ok = any(
-            re.search(rf'\b{re.escape(k)}\b', horario_str)
-            for k in DAY_MAP.keys() if isinstance(k, str)
-        )
+        dias_detectados = [k for k in DAY_MAP.keys() if isinstance(k, str) and re.search(rf'\b{re.escape(k)}\b', horario_str)]
+        dia_ok = len(dias_detectados) > 0
         if not dia_ok:
+            logger.debug(f"[VALIDACION HORARIO] Legajo: {legajo} | horario_str: '{horario_str}' | dias_detectados: {dias_detectados}")
             errores.append("Horario no especifica días válidos")
 
         # Rango horario (8, 8-17, 08:00-17, 8:30 a 17, etc.)
