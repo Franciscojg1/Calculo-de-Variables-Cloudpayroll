@@ -611,11 +611,14 @@ def parse_schedule_string(schedule_str):
             day_phrase = match.group(1).strip()
             tokens = re.findall(r'[a-záéíóúñ]+-[a-záéíóúñ]+|[a-záéíóúñ]+|\d+', day_phrase)
             day_words = [w for w in tokens if w not in ['y', 'de']]
-            # Expande cualquier token con ' y ' en subpalabras para que get_day_indices reciba una lista plana
+            # Expande cualquier token con 'y' (con o sin espacios) en subpalabras para que get_day_indices reciba una lista plana
+            import re as _re
             flat_day_words = []
             for w in day_words:
-                if ' y ' in w:
-                    flat_day_words.extend([subw.strip() for subw in w.split(' y ') if subw.strip()])
+                # Divide por cualquier variante de 'y' (con o sin espacios)
+                if _re.search(r'\s*y\s*', w):
+                    subwords = [subw.strip() for subw in _re.split(r'\s*y\s*', w) if subw.strip()]
+                    flat_day_words.extend(subwords)
                 else:
                     flat_day_words.append(w)
 
