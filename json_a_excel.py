@@ -219,7 +219,8 @@ sedes_permitidas = {
     normalizar_texto('clinica bazterrica'),
     normalizar_texto('Cons. Ext. Cl. Bazterrica'),
     normalizar_texto('Santa Isabel'),
-    normalizar_texto('Clinica Santa Isabel')
+    normalizar_texto('Clinica Santa Isabel'),
+    normalizar_texto('Paternal')
 }
 # Constantes específicas para es_medico_productividad (valores en minúsculas)
 SECTORES_MEDICOS: Set[str] = {
@@ -253,8 +254,9 @@ class ConfigExtensionHoraria:
         normalizar_texto("TECNICO"),
         normalizar_texto("TECNICO PIVOT")
     }
-    ID_LEGAJO_MAX: int = 3999
     HORAS_MINIMAS: float = 24.0
+    ID_LEGAJO_EXCLUIDO_MIN: int = 4000
+    ID_LEGAJO_EXCLUIDO_MAX: int = 4999
 
 class ConfigBioimagenes:
     """Configuraciones para adicional de bioimágenes (Variable 10000)"""
@@ -940,10 +942,9 @@ def contiene_full_guardia(texto: str) -> bool:
 
 def es_guardia(legajo: Dict[str, Any]) -> bool:
     """
-    Determina si un legajo es GUARDIA según 3 condiciones acumulativas:
+    Determina si un legajo es GUARDIA según 2 condiciones acumulativas:
     1) Sede válida (según lista normalizada)
     2) Contiene 'full guardia' en adicionables
-    3) Trabaja como máximo 3 días por semana
     """
     try:
         id_legajo = legajo.get('id_legajo', 'N/A')
@@ -964,38 +965,8 @@ def es_guardia(legajo: Dict[str, Any]) -> bool:
             logger.debug(f"[es_guardia] Legajo {id_legajo}: Adicionables NO contienen 'full guardia'.")
             return False
 
-        # --- 3. Validación de Días Trabajados (considerando periodicidad) ---
-        # Obtener bloques_por_dia del resumen de horario
-        bloques_por_dia = legajo.get('horario', {}).get('resumen', {}).get('bloques_por_dia', {})
-        
-        # Contar días trabajados considerando periodicidad
-        dias_trabajados_ponderados = 0.0
-        
-        for dia_str, bloques_del_dia in bloques_por_dia.items():
-            # Verificar si alguno de los bloques de este día es quincenal
-            es_quincenal = False
-            if isinstance(bloques_del_dia, list):
-                for bloque in bloques_del_dia:
-                    if isinstance(bloque, dict):
-                        periodicidad = bloque.get('periodicidad', 'semanal')
-                        if periodicidad == 'quincenal':
-                            es_quincenal = True
-                            break
-            
-            # Si es quincenal, cuenta como 0.5, si no, como 1.0
-            if es_quincenal:
-                dias_trabajados_ponderados += 0.5
-                logger.debug(f"[es_guardia] Legajo {id_legajo}: Día {dia_str} es quincenal, cuenta como 0.5")
-            else:
-                dias_trabajados_ponderados += 1.0
-                logger.debug(f"[es_guardia] Legajo {id_legajo}: Día {dia_str} es semanal, cuenta como 1.0")
-        
-        if dias_trabajados_ponderados > 3:
-            logger.debug(f"[es_guardia] Legajo {id_legajo}: Trabaja {dias_trabajados_ponderados} días ponderados (>3).")
-            return False
-
         # --- Pasa TODAS las condiciones ---
-        logger.info(f"[es_guardia] Legajo {id_legajo}: ✅ Validado como GUARDIA (sede='{sede_raw}', días ponderados={dias_trabajados_ponderados})")
+        logger.info(f"[es_guardia] Legajo {id_legajo}: ✅ Validado como GUARDIA (sede='{sede_raw}')")
         return True
 
     except Exception as e:
@@ -2364,8 +2335,8 @@ def calcular_extension_horaria(legajo: Dict[str, Any], v239: float) -> Optional[
     - Aplica exclusivamente a:
       * Puestos: 'TÉCNICO' o 'TÉCNICO PIVOT'
       * Sectores: Deben estar en 'SECTORES_IMAGENES' y NO ser 'LABORATORIO'
-      * Legajos con ID <= 3999
       * Horas semanales > 24
+      * Legajos con ID fuera del rango 4000-4999 (se excluye ese rango)
 
     Args:
         legajo: Diccionario con los datos completos del legajo
@@ -2389,8 +2360,11 @@ def calcular_extension_horaria(legajo: Dict[str, Any], v239: float) -> Optional[
         # =============================================
 
         # Validar ID de legajo
-        if id_legajo == 'DESCONOCIDO' or not isinstance(id_legajo, int) or id_legajo > 3999:
-            logger.debug(f"Legajo {id_legajo} excluido (ID no válido o > 3999)")
+        if id_legajo == 'DESCONOCIDO' or not isinstance(id_legajo, int):
+            logger.debug(f"Legajo {id_legajo} excluido (ID no válido)")
+            return None
+        if ConfigExtensionHoraria.ID_LEGAJO_EXCLUIDO_MIN <= id_legajo <= ConfigExtensionHoraria.ID_LEGAJO_EXCLUIDO_MAX:
+            logger.debug(f"Legajo {id_legajo} excluido (ID en rango 4000-4999)")
             return None
 
         # Acceder y normalizar puesto de forma segura

@@ -8,7 +8,6 @@ from datetime import datetime
 import tempfile
 from excel_a_json import procesar_excel_a_json
 from json_a_excel import procesar_archivo_json, guardar_resultados_csv
-from PIL import Image
 from typing import Dict, Any, List
 
 # ----------------- CONFIGURACIÓN INICIAL -----------------
@@ -327,17 +326,6 @@ st.markdown("---")
 
 # ----------------- SIDEBAR CON CONFIGURACIÓN -----------------
 with st.sidebar:
-    try:
-        logo = Image.open("logo.png")
-        st.image(logo, width=150)
-    except FileNotFoundError:
-        st.error("""
-        **Error**: Archivo 'logo.png' no encontrado.
-        Asegúrate de que:
-        - El archivo existe en la misma carpeta que este script
-        - El nombre coincide exactamente (incluyendo mayúsculas)
-        """)
-
     st.markdown("---")
     st.markdown("### Configuración")
     debug_mode = st.checkbox("Modo depuración", True, help="Muestra logs detallados y archivos temporales.")
