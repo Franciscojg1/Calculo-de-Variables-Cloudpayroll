@@ -150,6 +150,18 @@ CATEGORIA_MAP = {
 }
 TURNOS_NOCTURNOS_COMPLETOS = [('19:00', '07:00'), ('22:00', '06:00'), ('21:00', '07:00'), ('18:00', '07:00')]
 
+DAY_WORD_PATTERN = r'(?:lunes|martes|miercoles|miércoles|jueves|viernes|sabado|sábado|domingo|feriado)'
+DAY_PHRASE_PATTERN = rf'{DAY_WORD_PATTERN}(?:\s*(?:-|a|y)\s*{DAY_WORD_PATTERN})*'
+RANGO_HORARIO_REGEX = re.compile(r'\d{1,2}\s*[:.,]?\s*\d{0,2}\s*(?:a|-)\s*\d{1,2}\s*[:.,]?\s*\d{0,2}', re.IGNORECASE)
+HORAS_POR_DIA_REGEX = re.compile(
+    rf'(?P<days>{DAY_PHRASE_PATTERN})\s+(?P<hours>\d+(?:[.,]\d+)?)\s+horas?\s+por\s+d[ií]a',
+    re.IGNORECASE
+)
+HORAS_SEMANALES_REGEX = re.compile(
+    rf'(?P<days>{DAY_PHRASE_PATTERN})\s*(?:y\s*)?(?P<total>\d+(?:[.,]\d+)?)\s*(?:horas?)?\s*semanales',
+    re.IGNORECASE
+)
+
 SEDES_VALIDAS = {
     'PILAR': {'codigo': 'PL', 'nombre_normalizado': 'Pilar'},
     'SAN MIGUEL': {'codigo': 'SM', 'nombre_normalizado': 'San Miguel'},
@@ -279,6 +291,76 @@ def generate_block_id(days, start_time, end_time, periodicity, counter):
     period_part = periodicity.get('tipo', 'semanal')
     return f"{day_names}_{time_part}_{period_part}_{counter}"
 
+def tiene_formato_horario_parametrizable(texto: str) -> bool:
+    if not texto:
+        return False
+    return bool(
+        RANGO_HORARIO_REGEX.search(texto)
+        or HORAS_POR_DIA_REGEX.search(texto)
+        or HORAS_SEMANALES_REGEX.search(texto)
+    )
+
+def _extraer_dias_desde_frase(day_phrase: str):
+    tokens = re.findall(r'[a-záéíóúñ]+-[a-záéíóúñ]+|[a-záéíóúñ]+|\d+', day_phrase)
+    day_words = [w for w in tokens if w not in ['y', 'de']]
+    return get_day_indices(day_words)[0]
+
+def _existe_bloque_para_dias(blocks, days):
+    days_ordenados = tuple(sorted(days))
+    for block in blocks:
+        if tuple(sorted(block.get('dias_semana', []))) == days_ordenados:
+            return True
+    return False
+
+def _crear_bloque_sintetico(days, duration_hours, periodicity, counter, original_text_segment):
+    if duration_hours <= 0:
+        return None
+
+    start_minutes = 9 * 60
+    duration_minutes = max(1, int(round(duration_hours * 60)))
+    end_minutes = start_minutes + duration_minutes
+    start_time = f"{start_minutes // 60:02d}:{start_minutes % 60:02d}"
+    end_time = f"{(end_minutes // 60) % 24:02d}:{end_minutes % 60:02d}"
+
+    return {
+        "id": generate_block_id(days, start_time, end_time, periodicity, counter),
+        "dias_semana": days,
+        "hora_inicio": start_time,
+        "hora_fin": end_time,
+        "periodicidad": periodicity,
+        "original_text_segment": original_text_segment,
+        "cruza_dia": False
+    }
+
+def _extraer_bloques_resumen(texto_normalizado, bloques_existentes):
+    bloques_sinteticos = []
+    texto_resumen = texto_normalizado.lower()
+
+    for match in HORAS_POR_DIA_REGEX.finditer(texto_resumen):
+        days = _extraer_dias_desde_frase(match.group('days'))
+        if not days or _existe_bloque_para_dias(bloques_existentes + bloques_sinteticos, days):
+            continue
+
+        duration_hours = float(match.group('hours').replace(',', '.'))
+        periodicity = {"tipo": "semanal", "frecuencia": 1, "factor": 1.0}
+        bloque = _crear_bloque_sintetico(days, duration_hours, periodicity, len(bloques_existentes) + len(bloques_sinteticos), match.group(0).strip())
+        if bloque:
+            bloques_sinteticos.append(bloque)
+
+    for match in HORAS_SEMANALES_REGEX.finditer(texto_resumen):
+        days = _extraer_dias_desde_frase(match.group('days'))
+        if not days or _existe_bloque_para_dias(bloques_existentes + bloques_sinteticos, days):
+            continue
+
+        total_hours = float(match.group('total').replace(',', '.'))
+        duration_hours = total_hours / len(days)
+        periodicity = {"tipo": "semanal", "frecuencia": 1, "factor": 1.0}
+        bloque = _crear_bloque_sintetico(days, duration_hours, periodicity, len(bloques_existentes) + len(bloques_sinteticos), match.group(0).strip())
+        if bloque:
+            bloques_sinteticos.append(bloque)
+
+    return bloques_sinteticos
+
 def clean_and_convert_to_float(text_value):
     if pd.isna(text_value):
         return None
@@ -349,7 +431,7 @@ def validar_fila_detallada(row):
             errores.append("Horario no especifica días válidos")
 
         # Rango horario (8, 8-17, 08:00-17, 8:30 a 17, etc.)
-        if not re.search(r'\d{1,2}\s*[:.,]?\s*\d{0,2}\s*(?:a|-)\s*\d{1,2}\s*[:.,]?\s*\d{0,2}', horario_str):
+        if not tiene_formato_horario_parametrizable(horario_str):
             errores.append("Horario no contiene rango horario válido")
 
         # Términos ambiguos
@@ -579,6 +661,8 @@ def parse_schedule_string(schedule_str):
     logger.debug(f"DEBUG - Después de clean_and_standardize: '{s_clean}'")
     s_std = apply_equivalences(s_clean, EQUIVALENCIAS)
     logger.debug(f"DEBUG - Después de apply_equivalences: '{s_std}'")
+    s_parse = HORAS_POR_DIA_REGEX.sub('', s_std)
+    s_parse = HORAS_SEMANALES_REGEX.sub('', s_parse)
 
     # Regex mejorada: detecta días (lunes-viernes, sábado, domingo) + horarios
     pattern = re.compile(
@@ -590,18 +674,14 @@ def parse_schedule_string(schedule_str):
     re.IGNORECASE
 )
 
-    matches = list(pattern.finditer(s_std))
+    matches = list(pattern.finditer(s_parse))
     logger.debug(f"DEBUG - Bloques encontrados con finditer: {len(matches)}")
 
     # Si no encuentra bloques, fallback con división inteligente
-    if not matches and ("Y" in s_std or "y" in s_std):
+    if not matches and ("Y" in s_parse or "y" in s_parse):
         logger.debug("DEBUG - Usando fallback de división inteligente por 'Y'")
-        matches = division_inteligente_bloques(s_std, pattern)
+        matches = division_inteligente_bloques(s_parse, pattern)
         logger.debug(f"DEBUG - Bloques después de división inteligente: {len(matches)}")
-
-    if not matches:
-        logger.debug("DEBUG - No se encontraron bloques horarios.")
-        return []
 
     normalized_blocks = []
 
@@ -691,6 +771,15 @@ def parse_schedule_string(schedule_str):
 
         except Exception as e:
             logger.error(f"ERROR procesando bloque {idx}: {match.group(0)} -> {e}")
+
+    bloques_sinteticos = _extraer_bloques_resumen(s_std, normalized_blocks)
+    if bloques_sinteticos:
+        normalized_blocks.extend(bloques_sinteticos)
+        logger.debug(f"DEBUG - Bloques sintéticos agregados desde resumen: {len(bloques_sinteticos)}")
+
+    if not normalized_blocks:
+        logger.debug("DEBUG - No se encontraron bloques horarios.")
+        return []
 
     logger.debug(f"DEBUG - Total bloques normalizados: {len(normalized_blocks)}")
     return normalized_blocks
