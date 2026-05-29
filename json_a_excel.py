@@ -277,10 +277,10 @@ class ConfigBioimagenes:
     }
 
 class ConfigAdicionalPivot:
-    """Configuraciones para adicional pivot (Variables 1145 y 1996)."""
+    """Configuraciones para adicional pivot (Variables 1145 y 1144)."""
     PUESTO_VALIDO: str = normalizar_texto("TECNICO PIVOT")
     SECTOR_RESONANCIA: str = normalizar_texto("RESONANCIA MAGNETICA")
-    SECTORES_VARIABLE_1996: Set[str] = {
+    SECTORES_VARIABLE_1144: Set[str] = {
         normalizar_texto("TOMOGRAFIA COMPUTADA"),
         normalizar_texto("IMAGENES DMF"),
         normalizar_texto("CHEQUEOS Y CARDIOLOGIA"),
@@ -290,7 +290,7 @@ class ConfigAdicionalPivot:
     }
     VARIABLE_RESONANCIA: int = 1145
     VALOR_RESONANCIA: int = 40
-    VARIABLE_GENERAL: int = 1996
+    VARIABLE_GENERAL: int = 1144
     VALOR_GENERAL: int = 20
 
 # Variables utilizadas en calcular_porcentaje_art19
@@ -335,7 +335,7 @@ CATALOGO_VARIABLES = {
     1599: "Porcentaje Art. 19",
     1673: "Proporción Lavado",
     1740: "Médico Productividad (Principal)",
-    1996: "Adicional Voluntario Emp. (Pivot)",
+    1144: "Adicional Voluntario Emp. (Pivot)",
     2000: "Personal de Guardia",
     2006: "Fecha Fin de Contrato",
     2281: "No Liquida Plus Guardia",
@@ -755,10 +755,10 @@ def calcular_variables(legajo: Dict[str, Any]) -> List[Tuple[int, Any]]:
             log_variable_no_calculada(id_legajo, 992, "No cumple condiciones")
 
         # ==========================================
-        # VARIABLES 1145 y 1996: ADICIONAL PIVOT
+        # VARIABLES 1145 y 1144: ADICIONAL PIVOT
         # ==========================================
         log_variable_evaluando(id_legajo, 1145)
-        log_variable_evaluando(id_legajo, 1996)
+        log_variable_evaluando(id_legajo, 1144)
         variables_pivot = calcular_adicional_pivot(legajo)
 
         v1145 = variables_pivot.get(1145)
@@ -768,12 +768,12 @@ def calcular_variables(legajo: Dict[str, Any]) -> List[Tuple[int, Any]]:
         else:
             log_variable_no_calculada(id_legajo, 1145, "No cumple condiciones del adicional pivot resonancia")
 
-        v1996 = variables_pivot.get(1996)
-        if v1996 is not None:
-            variables.append((1996, v1996))
-            log_variable_calculada(id_legajo, 1996, v1996, "Adicional pivot general")
+        v1144 = variables_pivot.get(1144)
+        if v1144 is not None:
+            variables.append((1144, v1144))
+            log_variable_calculada(id_legajo, 1144, v1144, "Adicional pivot general")
         else:
-            log_variable_no_calculada(id_legajo, 1996, "No cumple condiciones del adicional pivot general")
+            log_variable_no_calculada(id_legajo, 1144, "No cumple condiciones del adicional pivot general")
 
         # ==========================================
         # VARIABLE 1151: ADICIONAL RESONANCIA
@@ -2473,24 +2473,24 @@ def calcular_adicional_pivot(legajo: Dict[str, Any]) -> Dict[int, int]:
     Reglas:
     - Puesto exacto: TECNICO PIVOT
     - Sector RESONANCIA MAGNETICA -> Variable 1145 = 40
-    - Sectores parametrizados de imágenes -> Variable 1996 = 20
+    - Sectores parametrizados de imágenes -> Variable 1144 = 20
     """
     id_legajo = legajo.get('id_legajo', 'N/A')
 
     try:
         puesto_raw = legajo.get('datos_personales', {}).get('puesto')
         if puesto_raw is None:
-            logger.debug(f"[V1145/V1996] Legajo {id_legajo}: Puesto es None")
+            logger.debug(f"[V1145/V1144] Legajo {id_legajo}: Puesto es None")
             return {}
 
         puesto_normalizado = normalizar_texto(puesto_raw)
         if puesto_normalizado != ConfigAdicionalPivot.PUESTO_VALIDO:
-            logger.debug(f"[V1145/V1996] Legajo {id_legajo}: Puesto '{puesto_normalizado}' no aplica")
+            logger.debug(f"[V1145/V1144] Legajo {id_legajo}: Puesto '{puesto_normalizado}' no aplica")
             return {}
 
         sector_raw = legajo.get('datos_personales', {}).get('sector', {}).get('principal')
         if sector_raw is None:
-            logger.debug(f"[V1145/V1996] Legajo {id_legajo}: Sector principal es None")
+            logger.debug(f"[V1145/V1144] Legajo {id_legajo}: Sector principal es None")
             return {}
 
         sector_normalizado = normalizar_texto(sector_raw)
@@ -2499,15 +2499,15 @@ def calcular_adicional_pivot(legajo: Dict[str, Any]) -> Dict[int, int]:
             logger.info(f"[V1145] Legajo {id_legajo}: APLICA adicional pivot resonancia")
             return {ConfigAdicionalPivot.VARIABLE_RESONANCIA: ConfigAdicionalPivot.VALOR_RESONANCIA}
 
-        if sector_normalizado in ConfigAdicionalPivot.SECTORES_VARIABLE_1996:
-            logger.info(f"[V1996] Legajo {id_legajo}: APLICA adicional pivot general")
+        if sector_normalizado in ConfigAdicionalPivot.SECTORES_VARIABLE_1144:
+            logger.info(f"[V1144] Legajo {id_legajo}: APLICA adicional pivot general")
             return {ConfigAdicionalPivot.VARIABLE_GENERAL: ConfigAdicionalPivot.VALOR_GENERAL}
 
-        logger.debug(f"[V1145/V1996] Legajo {id_legajo}: Sector '{sector_normalizado}' no aplica")
+        logger.debug(f"[V1145/V1144] Legajo {id_legajo}: Sector '{sector_normalizado}' no aplica")
         return {}
 
     except Exception as e:
-        logger.error(f"[V1145/V1996] Legajo {id_legajo}: Error calculando adicional pivot - {str(e)}")
+        logger.error(f"[V1145/V1144] Legajo {id_legajo}: Error calculando adicional pivot - {str(e)}")
         logger.error(traceback.format_exc())
         return {}
 
