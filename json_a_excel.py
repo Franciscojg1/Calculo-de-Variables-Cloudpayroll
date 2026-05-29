@@ -717,31 +717,28 @@ def calcular_variables(legajo: Dict[str, Any]) -> List[Tuple[int, Any]]:
         # ==========================================
         v1157 = obtener_horas_nocturnas(legajo, es_guardia_actual)
         full_nocturno = es_full_nocturno(legajo) if v1157 > 0 else False
+        cumple_condiciones_nocturnidad, motivo_nocturnidad = evaluar_condiciones_nocturnidad(
+            legajo,
+            v1157,
+            es_guardia_actual
+        )
         
         log_variable_evaluando(id_legajo, 1157)
         log_variable_evaluando(id_legajo, 1498)
         
-        if v1157 == 0:
-            log_variable_no_calculada(id_legajo, 1157, "Sin horas nocturnas")
-            log_variable_no_calculada(id_legajo, 1498, "Sin horas nocturnas")
+        if not cumple_condiciones_nocturnidad:
+            log_variable_no_calculada(id_legajo, 1157, motivo_nocturnidad)
+            log_variable_no_calculada(id_legajo, 1498, motivo_nocturnidad)
         elif full_nocturno:
             # CASO FULL NOCTURNO: Solo V1498
             log_variable_no_calculada(id_legajo, 1157, "Full nocturno - solo se liquida V1498")
-            if aplicar_adicional_nocturno(legajo, v1157, es_guardia_actual):
-                variables.append((1498, 1))
-                log_variable_calculada(id_legajo, 1498, 1, "Full nocturno")
-            else:
-                log_variable_no_calculada(id_legajo, 1498, "No cumple condiciones de adicional nocturno")
+            variables.append((1498, 1))
+            log_variable_calculada(id_legajo, 1498, 1, "Full nocturno")
         else:
-            # CASO NORMAL
+            # CASO NORMAL: Tiene nocturnidad, cumple condiciones base, pero NO es full nocturno.
             variables.append((1157, round(v1157, 2)))
             log_variable_calculada(id_legajo, 1157, round(v1157, 2), f"{v1157} horas mensuales")
-            
-            if aplicar_adicional_nocturno(legajo, v1157, es_guardia_actual):
-                variables.append((1498, 1))
-                log_variable_calculada(id_legajo, 1498, 1)
-            else:
-                log_variable_no_calculada(id_legajo, 1498, "No cumple condiciones de adicional nocturno")
+            log_variable_no_calculada(id_legajo, 1498, "No es full nocturno")
 
         # ==========================================
         # VARIABLE 992: EXTENSIÓN HORARIA
@@ -1478,12 +1475,43 @@ def aplicar_lavado_uniforme(legajo: Dict[str, Any]) -> bool:
         logger.error(traceback.format_exc())
         return False
 
-def aplicar_adicional_nocturno(legajo: Dict[str, Any], horas_nocturnas: float, es_guardia: bool) -> bool:
+def evaluar_condiciones_nocturnidad(legajo: Dict[str, Any], horas_nocturnas: float, es_guardia: bool) -> Tuple[bool, str]:
     """
-    Determina si aplica adicional nocturno según:
+    Valida las condiciones base compartidas por las variables de nocturnidad.
+
+    Reglas base:
     1) NO sea guardia
     2) Tenga horas nocturnas > 0
     3) Pertenezca a categoría DC (Dentro de Convenio)
+
+    La exclusión mutua entre 1157 y 1498 se resuelve en calcular_variables().
+    """
+    categoria = legajo.get('contratacion', {}).get('categoria', '')
+
+    if es_guardia:
+        return False, "Es guardia"
+
+    if horas_nocturnas <= 0:
+        return False, "Sin horas nocturnas"
+
+    if not categoria:
+        return False, "Categoría vacía"
+
+    if not str(categoria).lower().startswith('dc_'):
+        return False, f"Categoría '{categoria}' no es DC"
+
+    return True, ""
+
+def aplicar_adicional_nocturno(legajo: Dict[str, Any], horas_nocturnas: float, es_guardia: bool) -> bool:
+    """
+    Determina si cumple las condiciones base del adicional nocturno según:
+    1) NO sea guardia
+    2) Tenga horas nocturnas > 0
+    3) Pertenezca a categoría DC (Dentro de Convenio)
+
+    Nota: que la 1498 se liquide o no además depende de que el legajo sea
+    full nocturno; esa exclusión mutua se resuelve en calcular_variables().
+
     Args:
         legajo: Diccionario con datos del legajo
         horas_nocturnas: Horas calculadas por obtener_horas_nocturnas()
@@ -1497,35 +1525,20 @@ def aplicar_adicional_nocturno(legajo: Dict[str, Any], horas_nocturnas: float, e
     logger.debug(f"[V1498] Legajo {id_legajo}:   - es_guardia={es_guardia}")
     logger.debug(f"[V1498] Legajo {id_legajo}:   - horas_nocturnas={horas_nocturnas}")
 
-    # 1. Excepciones rápidas (guardias o sin horas nocturnas)
-    if es_guardia:
-        logger.debug(f"[V1498] Legajo {id_legajo}: ✗ Excluido (es guardia)")
-        return False
-    if horas_nocturnas <= 0:
-        logger.debug(f"[V1498] Legajo {id_legajo}: ✗ Excluido (sin horas nocturnas)")
-        return False
-
     try:
-        # 2. Validar categoría
         categoria = legajo.get('contratacion', {}).get('categoria', '')
-        
         logger.debug(f"[V1498] Legajo {id_legajo}:   - Categoría='{categoria}'")
-        
-        if not categoria:
-            logger.warning(f"[V1498] Legajo {id_legajo}: ⚠ Categoría vacía")
-            return False
-            
-        # 3. Verificar convenio (DC = Dentro de Convenio)
-        es_dc = str(categoria).lower().startswith('dc_')
-        
+
+        cumple_condiciones, motivo = evaluar_condiciones_nocturnidad(legajo, horas_nocturnas, es_guardia)
+        es_dc = str(categoria).lower().startswith('dc_') if categoria else False
         logger.debug(f"[V1498] Legajo {id_legajo}:   - ¿Empieza con 'dc_'?: {es_dc}")
-        
-        if es_dc:
+
+        if cumple_condiciones:
             logger.info(f"[V1498] Legajo {id_legajo}: ✓ APLICA (DC, {horas_nocturnas}h)")
         else:
-            logger.debug(f"[V1498] Legajo {id_legajo}: ✗ NO APLICA (Categoría '{categoria}' no es DC)")
-        
-        return es_dc
+            logger.debug(f"[V1498] Legajo {id_legajo}: ✗ NO APLICA ({motivo})")
+
+        return cumple_condiciones
         
     except Exception as e:
         logger.error(f"[V1498] Legajo {id_legajo}: ERROR CRÍTICO - {str(e)}")
